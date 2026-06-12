@@ -11,6 +11,7 @@ import { TacticalView } from '../three/TacticalView';
 import { ControlBar, InputMode } from './ControlBar';
 import { Dashboard } from './Dashboard';
 import { MiniMap } from './MiniMap';
+import { OrderChecklist } from './OrderChecklist';
 
 /** Name the actual failed check (Phase 1.1 P2.5) — never a list of maybes. */
 function blockedMessage(reason: string): string {
@@ -91,9 +92,31 @@ export function GameScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller, mode, busy, tick, controller.state.turn, controller.movePlan]);
 
+  const firstHints = useRef({ arm: false, missile: false, damage: false });
+
+  const armWeapon = useCallback(
+    (m: InputMode) => {
+      setMode(m);
+      if (m !== 'move') {
+        if (isMissile(m) && !firstHints.current.missile) {
+          firstHints.current.missile = true;
+          setHint('Missiles fire indirect: tap ANY hex in range — no line of sight needed.');
+        } else if (!firstHints.current.arm) {
+          firstHints.current.arm = true;
+          setHint('Armed. Ringed targets are valid — tap one to lock. Tap the band to read your reach.');
+        }
+      }
+    },
+    [],
+  );
+
   const onPick = useCallback(
     (pick: PickResult) => {
-      if (busy || controller.state.outcome) return;
+      if (busy) {
+        sceneRef.current?.skipPlayback(); // tap to skip resolution (P4.2)
+        return;
+      }
+      if (controller.state.outcome) return;
       if (mode === 'move') {
         if (controller.setMoveTarget(pick.hex)) {
           setHint('Course set. End Turn to roll, or arm a weapon.');
@@ -138,20 +161,30 @@ export function GameScreen({
     [busy, controller, mode, bump],
   );
 
+  const [phaseLabel, setPhaseLabel] = useState<string | null>(null);
+
   const endTurn = useCallback(() => {
     if (busy || controller.state.outcome) return;
     setBusy(true);
     const events = controller.endTurn();
     setTicker(describeEvents(events));
     bump();
+    if (
+      !firstHints.current.damage &&
+      events.some((e) => e.type === 'systemStateChanged')
+    ) {
+      firstHints.current.damage = true;
+      setHint('You took damage — tap a RED/DARK system on the dashboard to start repairs.');
+    }
     const after = () => {
+      setPhaseLabel(null);
       setBusy(false);
       bump();
       if (controller.state.outcome) setTimeout(onGameOver, 1400);
       else sceneRef.current?.centerOnKraken();
     };
     const scene = sceneRef.current;
-    if (scene) scene.playEvents(events).then(after);
+    if (scene) scene.playEvents(events, setPhaseLabel).then(after);
     else after();
   }, [busy, controller, bump, onGameOver]);
 
@@ -166,6 +199,10 @@ export function GameScreen({
           {' · '}
           <span className={remaining <= 10 ? 'warn' : ''}>{remaining} turns left</span>
         </div>
+        {phaseLabel && <div className="phase-label rj">{phaseLabel}</div>}
+        {!busy && !controller.state.outcome && (
+          <OrderChecklist controller={controller} tick={tick} />
+        )}
         <div className="event-ticker">
           {ticker.slice(0, 7).map((line, i) => (
             <div key={i} className={line.tone}>
@@ -188,7 +225,7 @@ export function GameScreen({
         <ControlBar
           controller={controller}
           mode={mode}
-          setMode={setMode}
+          setMode={armWeapon}
           onEndTurn={endTurn}
           busy={busy}
         />

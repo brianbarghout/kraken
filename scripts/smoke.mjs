@@ -37,8 +37,11 @@ await run('desktop-game', { width: 1280, height: 800 }, async (page) => {
   // tap the tactical view a bit left of centre to set a course
   await page.mouse.click(450, 380);
   await page.waitForTimeout(400);
+  await page.screenshot({ path: 'scratch-shots/desktop-orders.png' });
   await page.getByText('End Turn').click();
-  await page.waitForTimeout(2600);
+  await page.waitForTimeout(450);
+  await page.screenshot({ path: 'scratch-shots/desktop-resolving.png' });
+  await page.waitForTimeout(2400);
   await page.getByText('End Turn').click();
   await page.waitForTimeout(2600);
 });

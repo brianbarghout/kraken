@@ -170,11 +170,29 @@ retuning never requires code changes.
   is silent; sitting uselessly forever felt wrong even for Tier 1.
   Tier 1 GEVs do not shoot-and-scoot (that is terrain/tactic
   exploitation, which §18.1 excludes).
-- **D36 — Direct fire is unit-tracking with re-validation (verified +
-  hardened 2026-06-12).** Combat resolves after movement; MAIN/SEC/AP
-  fire orders re-check range, sensors and LOS against the target's
-  post-movement position. A target out of envelope at resolution
-  **evades**: the engine emits a `targetEvaded` event (surfaced in the
-  UI ticker and CLI sim) instead of a silent generic rejection. Only
-  missiles and artillery are hex-targeted — their shells landing on
-  vacated ground is the designed 1-turn-delay suspense, not a bug.
+## Phase 1.1 (UX & readability) decisions
+
+- **D36 — Direct fire is unit-tracking with re-validation (§0 of the
+  brief, verified + hardened 2026-06-12).** Combat resolves after
+  movement; MAIN/SEC/AP fire orders re-check range, sensors and LOS
+  against the target's post-movement position. A target out of envelope
+  at resolution **evades**: the engine emits a `targetEvaded` event
+  (surfaced in the UI ticker and CLI sim) instead of a silent generic
+  rejection. Only missiles and artillery are hex-targeted — their shells
+  landing on vacated ground is the designed 1-turn-delay suspense, not
+  a bug.
+
+- **D37 — Kenney models are repurposed civilian/TD kits.** Kenney has no
+  3D military pack, so silhouettes are composed (tractor-shovel + turret
+  = heavy tank, flatbed + cannon = artillery SPG, hover racer = GEV,
+  kart = scout) and faction-tinted. Distinct shapes over literal tanks,
+  per the brief. Full mapping in ASSETS.md. The Kraken stays a custom
+  primitive assembly (GDD §16.2 + per-system damage materials).
+- **D38 — First-time hints are per-session.** The GDD forbids
+  localStorage/sessionStorage (§17), so one-shot teaching toasts reset
+  with each page load. Acceptable: they only fire on first arm / first
+  missile / first damage, and veterans skim past them.
+- **D39 — Resolution playback timing.** Phase segments only play when
+  they have content (MOVEMENT/COMBAT/ARTILLERY/REPAIR), ~0.7 s each,
+  tap anywhere on the battlefield to skip. Phase labels double as the
+  §8.1 teaching device.

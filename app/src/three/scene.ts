@@ -692,17 +692,70 @@ export class TacticalScene {
 
   // ---------------------------------------------------------- animation
 
-  /** Animate a resolved turn's events; resolves when the show is over. */
-  playEvents(events: GameEvent[]): Promise<void> {
+  private playbackResolve: (() => void) | null = null;
+
+  /** Fast-forward the current resolution playback (tap to skip, P4.2). */
+  skipPlayback(): void {
+    if (!this.playbackResolve) return;
+    // take the resolver first — finishing animations can re-enter here
+    const resolve = this.playbackResolve;
+    this.playbackResolve = null;
+    for (const anim of this.animations) {
+      anim.update(1);
+      const done = anim.done;
+      anim.done = undefined;
+      anim.update = () => {};
+      anim.duration = -1;
+      done?.();
+    }
+    this.animations = [];
+    resolve();
+  }
+
+  /**
+   * Animate a resolved turn's events as a labelled GDD §8.1 sequence:
+   * MOVEMENT -> COMBAT -> ARTILLERY -> REPAIR. Resolves when done.
+   */
+  playEvents(events: GameEvent[], onPhase?: (label: string | null) => void): Promise<void> {
     return new Promise((resolve) => {
+      this.playbackResolve = () => {
+        onPhase?.(null);
+        resolve();
+      };
       const pos = new Map<string, Axial>(); // last known positions this playback
       const trackPos = (id: string, hex: Axial) => pos.set(id, hex);
       for (const u of this.lastSnapshot?.defenders ?? []) trackPos(u.id, u.position);
       if (this.lastSnapshot) trackPos('kraken', this.lastSnapshot.krakenPos);
 
-      let tMove = 0;
-      let tCombat = 650;
-      let tShell = 1100;
+      // build the labelled timeline from which phases actually have content
+      const has = (...types: string[]) => events.some((e) => types.includes(e.type));
+      const hasMove = has('krakenMoved', 'unitMoved', 'unitScooted');
+      const hasCombat = has('attackResolved', 'targetEvaded', 'shellFired');
+      const hasArtillery = has('shellLanded');
+      const hasRepair = has('repairStarted', 'repairTick', 'repairCompleted');
+
+      let clock = 0;
+      const label = (text: string, at: number) =>
+        this.animations.push({ delay: at, duration: 1, update: () => onPhase?.(text) });
+      const tMove = clock;
+      if (hasMove) {
+        label('MOVEMENT', clock);
+        clock += 750;
+      }
+      const tCombat = clock;
+      if (hasCombat) {
+        label('COMBAT', clock);
+        clock += 700;
+      }
+      const tShell = clock;
+      if (hasArtillery) {
+        label('ARTILLERY', clock);
+        clock += 750;
+      }
+      if (hasRepair) {
+        label('REPAIR', clock);
+        clock += 450;
+      }
 
       for (const e of events) {
         switch (e.type) {
@@ -761,8 +814,13 @@ export class TacticalScene {
         }
       }
 
-      const total = 1900;
-      this.animations.push({ delay: total, duration: 1, update: () => {}, done: resolve });
+      const total = Math.max(clock, 400);
+      this.animations.push({
+        delay: total,
+        duration: 1,
+        update: () => {},
+        done: () => this.skipPlayback(), // natural end uses the same resolve path
+      });
     });
   }
 
