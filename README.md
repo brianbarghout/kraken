@@ -7,10 +7,13 @@ cybernetic war machine, toward the Command Post; everyone else tries to
 strip its systems before it gets there. Design reference:
 [docs/KRAKEN-GDD-v1.3.md](docs/KRAKEN-GDD-v1.3.md).
 
-## Status — Phase 0 complete
+## Status — Phase 1 complete (Solo MVP)
 
-Headless, fully unit-tested engine core (GDD §19). No graphics, no
-networking — those are Phases 1–3.
+Playable in the browser: you drive the Kraken against Tier 1 AI defenders
+on the Gateway map (full or 50%), with the SVG systems dashboard, fog of
+war, repair-under-fire, shell arcs, and win/loss/timeout — fully
+client-side static SPA. Phase 0 delivered the headless engine core
+(GDD §19); the UI never duplicates engine rules.
 
 - Hex grid (axial), A* with terrain costs and unit exceptions
 - Line of sight per GDD §6.2
@@ -28,10 +31,16 @@ Judgement calls beyond the GDD: [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ```bash
 npm install
-npm test               # full unit + integration suite
+npm test               # engine + app-logic suite
+npm run dev            # play it (Vite dev server)
+npm run build          # static bundle -> dist/
+npm run preview        # serve the built bundle
 npm run sim            # watch a random-orders game in the terminal
 npm run sim -- --seed 42 --log game.json   # replayable, with event log dump
 npm run typecheck
+node scripts/smoke.mjs # headless-browser smoke test (needs preview running + Edge)
 ```
 
-Requires Node 20+.
+Requires Node 20+. Layout: `/engine` pure simulation library,
+`/app` Vite + React + Three.js solo client, `/cli` terminal sim.
+Asset register: [docs/ASSETS.md](docs/ASSETS.md).

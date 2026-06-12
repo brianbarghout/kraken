@@ -133,3 +133,40 @@ retuning never requires code changes.
   superior reach. The mobility-kill path works (treads stripped → speed
   1) but the clock still favours the Kraken on this map size. Inputs for
   Phase 1 Tier-1 AI and §18.2 balance tuning.
+
+## Phase 1 (Solo MVP) decisions
+
+- **D28 — Solo turn flow [flagged in the brief].** The WeGo turn resolves
+  when the player hits END TURN — no 20-second timer in solo. The
+  30-minute clock is represented as "turns remaining" out of 85.
+- **D29 — Terrain is always rendered; fog gates units.** The solo player
+  chose the map on the start screen, so hiding static terrain adds
+  nothing. Out-of-sensor hexes are dimmed to ~30% (the bubble visibly
+  shrinks with sensor damage per §7.2); defender units exist on screen
+  only while detected (sensor range AND LOS). Progressive terrain
+  *reveal* matters for defender-side fog and returns in Phase 2+.
+- **D30 — Primitive models, not Kenney, for Phase 1.** All units/terrain
+  are programmatic low-poly primitives (brief: "placeholder primitives
+  are acceptable… do not block on art"). Upgrade path and intended packs
+  recorded in ASSETS.md; only three scene functions know about geometry.
+- **D31 — Effect timing vs the artillery delay.** `shellFired` shows a
+  launch flash on the firing turn; the descending arc + explosion play on
+  the landing turn (the 1-turn suspense gap stays honest). The Kraken's
+  move lerps; defender moves snap (detected-only units tweening in and
+  out of fog reads as teleporting anyway).
+- **D32 — Dev seam.** `?dev=1` exposes `window.__kraken = { controller,
+  bump }` so the headless browser smoke test (`scripts/smoke.mjs`) can
+  damage systems and drive the repair flow. No effect without the query
+  param.
+- **D33 — Particle degradation first (quality bar).** The render loop
+  tracks average frame time; sustained > ~22 ms halves the particle
+  budget (floor 25%) before any other quality is touched.
+- **D34 — AI RNG is separate from game RNG.** `createTier1AI(seed)` uses
+  its own stream (`seed ^ 0x7ae1`); AI target picks never perturb the
+  engine's replay-critical RNG sequence.
+- **D35 — Tier 1 AI gaps.** "Last known position" = current position
+  (the Kraken blip is always on the strategic layer, §7.1). Artillery
+  already on hills but out of range advances toward the Kraken — the GDD
+  is silent; sitting uselessly forever felt wrong even for Tier 1.
+  Tier 1 GEVs do not shoot-and-scoot (that is terrain/tactic
+  exploitation, which §18.1 excludes).
