@@ -71,6 +71,7 @@ export function GameScreen({
       smokeCenters: s.smokeClouds.filter((c) => c.expiresTurn >= s.turn).flatMap((c) => c.hexes),
       pathPreview: controller.movePlan?.path ?? null,
       reachableIndex: controller.movePlan?.reachableIndex ?? 0,
+      overrunHexes: controller.movePlan?.overruns ?? [],
       // a locked unit's ring is REPLACED by its reticle (P1.1)
       highlightUnitIds: new Set(
         armedTargets.unitIds.filter(
@@ -265,6 +266,17 @@ function describeEvents(events: GameEvent[]): { text: string; tone: string }[] {
         break;
       case 'smokeDeployed':
         lines.push({ text: 'Smoke deployed', tone: '' });
+        break;
+      case 'overrun':
+        lines.push({
+          text:
+            e.result === 'killed'
+              ? `Overran ${String(e.unitType)} ${String(e.unitId)} — crushed`
+              : e.result === 'damaged'
+                ? `Ground against ${String(e.unitType)} ${String(e.unitId)} — damaged it, advance held`
+                : `${String(e.unitType)} ${String(e.unitId)} repelled the overrun`,
+          tone: e.result === 'killed' ? 'good' : '',
+        });
         break;
       case 'targetEvaded':
         lines.push({

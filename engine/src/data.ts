@@ -53,6 +53,12 @@ export interface UnitData {
     damagedAttackMultiplier: number;
     damagedSpeedPenalty: number;
   };
+  overrun: {
+    /** units with armour >= this resist overrun (tanks); below it are crushed */
+    hardArmourThreshold: number;
+    /** chance per tank overrun of one damage step to a Kraken tread */
+    treadRiskChance: number;
+  };
   artilleryFire: {
     landingDelayTurns: number;
     scatter: { aimed: number; spotted: number; blind: number };

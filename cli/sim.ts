@@ -192,6 +192,7 @@ const INTERESTING = new Set([
   'krakenMoved',
   'attackResolved',
   'targetEvaded',
+  'overrun',
   'shellFired',
   'shellLanded',
   'blastHit',
@@ -236,6 +237,8 @@ function describeEvent(e: Record<string, unknown>): string | null {
       return `  ${e.unitId} (${e.unitType}) DESTROYED`;
     case 'smokeDeployed':
       return `KRAKEN pops smoke at ${fmt(e.center as Axial)}`;
+    case 'overrun':
+      return `KRAKEN OVERRUNS ${e.unitType} ${e.unitId} -> ${String(e.result).toUpperCase()}`;
     case 'targetEvaded':
       return e.attackerId === 'kraken'
         ? `  ${e.targetId} EVADES KRAKEN ${e.weapon} (${e.reason})`

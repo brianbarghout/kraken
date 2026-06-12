@@ -22,6 +22,18 @@ export interface Tier1AI {
   ordersFor(state: GameState): DefenderOrder[];
 }
 
+/**
+ * Tier 2 backlog hook (Phase 1.2 P3.6): overrun avoidance. Tier 1 is
+ * deliberately dumb (§18.1 — no terrain exploitation) and will walk soft
+ * units into the Kraken's projected path. Tier 2 should check
+ * planKrakenMove-style projections and route soft targets (armour below
+ * data.overrun.hardArmourThreshold) out of the grind line.
+ */
+export interface AIOptions {
+  /** reserved for Tier 2 — no effect at Tier 1 */
+  avoidOverrun?: boolean;
+}
+
 function hillHexes(state: GameState): Axial[] {
   const hills: Axial[] = [];
   for (let row = 0; row < state.map.height; row++) {

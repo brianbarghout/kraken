@@ -129,6 +129,8 @@ export interface SceneSnapshot {
   smokeCenters: Axial[];
   pathPreview: Axial[] | null;
   reachableIndex: number;
+  /** hexes on the planned course the Kraken will grind through (D41) */
+  overrunHexes: Axial[];
   highlightUnitIds: Set<string>;
   highlightCp: boolean;
   cpState: string;
@@ -647,7 +649,29 @@ export class TacticalScene {
       geo,
       new THREE.LineBasicMaterial({ vertexColors: true, linewidth: 2 }),
     );
+    this.pathLine.raycast = () => {};
     this.scene.add(this.pathLine);
+
+    // overrun markers: a warning X over every hex the course grinds through
+    for (const hex of snap.overrunHexes) {
+      const marker = new THREE.Group();
+      const mat = new THREE.LineBasicMaterial({ color: 0xff5c57 });
+      const s = 0.45;
+      for (const [a, b] of [
+        [new THREE.Vector3(-s, 0, -s), new THREE.Vector3(s, 0, s)],
+        [new THREE.Vector3(-s, 0, s), new THREE.Vector3(s, 0, -s)],
+      ] as const) {
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), mat);
+        line.raycast = () => {};
+        marker.add(line);
+      }
+      const p = hexToWorld(hex);
+      marker.position.set(p.x, this.groundHeight(hex) + 0.65, p.z);
+      marker.raycast = () => {};
+      // ride along with the path-line lifecycle
+      this.pathLine.add(marker);
+      marker.position.sub(new THREE.Vector3(0, 0, 0)); // world == parent (line at origin)
+    }
   }
 
   private updateHighlights(snap: SceneSnapshot): void {

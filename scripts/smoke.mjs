@@ -144,6 +144,35 @@ await run('desktop-xray', { width: 1280, height: 800 }, async (page) => {
   if (forced < 1) throw new Error(`x-ray ghost did not appear under forced occlusion`);
 });
 
+// P3: overrun — drive through a scout, see the marker, checklist, and event
+await run('desktop-overrun', { width: 1280, height: 800 }, async (page) => {
+  await page.goto(base + '?dev=1', { waitUntil: 'networkidle' });
+  await page.getByText('Begin Assault').click();
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => {
+    const { controller, bump } = window.__kraken;
+    const k = controller.state.krakenPosition;
+    const scout = controller.state.defenders.find((u) => u.type === 'scoutBike');
+    scout.position = { q: k.q - 2, r: k.r };
+    controller.setMoveTarget({ q: k.q - 3, r: k.r }); // course straight through it
+    bump();
+  });
+  await page.waitForTimeout(400);
+  const planned = await page.evaluate(
+    () => window.__kraken.controller.movePlan?.overruns.length ?? 0,
+  );
+  if (planned !== 1) throw new Error(`expected 1 planned overrun, got ${planned}`);
+  await page.screenshot({ path: 'scratch-shots/desktop-overrun-plan.png' });
+  await page.getByText('End Turn').click();
+  await page.waitForTimeout(2800);
+  const crushed = await page.evaluate(() =>
+    window.__kraken.controller.state.events.some(
+      (e) => e.type === 'overrun' && e.result === 'killed',
+    ),
+  );
+  if (!crushed) throw new Error('overrun event missing after driving through a scout');
+});
+
 await browser.close();
 if (errors.length > 0) {
   console.error('SMOKE FAILURES:');

@@ -127,6 +127,44 @@ function damageCommandPost(state: GameState, phase: TurnPhase, result: 'damage' 
 
 // ---------------------------------------------------------------- movement
 
+/**
+ * Resolve the Kraken grinding through a defender's hex (P3, D41).
+ * Soft targets (armour below the threshold) are crushed outright; tanks
+ * get a 50/50 damage roll and block the advance while they live — a
+ * damaged tank overrun again dies. Every tank overrun risks a tread.
+ */
+function resolveOverrun(state: GameState, unit: DefenderUnit): 'passed' | 'blocked' {
+  const phase: TurnPhase = 'movement';
+  const armour = state.data.defenders[unit.type].armour;
+  const hard = armour >= state.data.overrun.hardArmourThreshold;
+  let result: 'killed' | 'damaged' | 'repelled';
+  if (!hard) {
+    result = 'killed';
+  } else if (unit.state === 'amber') {
+    result = 'killed'; // already broken — ground under the treads
+  } else {
+    result = state.rng.chance(state.data.combat.damageRollChance) ? 'damaged' : 'repelled';
+  }
+  emit(state, phase, 'overrun', {
+    unitId: unit.id,
+    unitType: unit.type,
+    result,
+    hex: unit.position,
+  });
+  if (result === 'killed') damageDefender(state, phase, unit, 'kill');
+  if (result === 'damaged') damageDefender(state, phase, unit, 'damage');
+  // grinding through armour chews the running gear
+  if (hard && state.rng.chance(state.data.overrun.treadRiskChance)) {
+    const treads = (['treadLeft', 'treadRight'] as const).filter(
+      (t) => state.kraken.systems[t] !== 'dark',
+    );
+    if (treads.length > 0) {
+      damageKrakenSystem(state, phase, state.rng.pick(treads), 'damage');
+    }
+  }
+  return result === 'killed' ? 'passed' : 'blocked';
+}
+
 function movementPhase(state: GameState, orders: TurnOrders): void {
   const phase: TurnPhase = 'movement';
   const k = orders.kraken;
@@ -138,13 +176,27 @@ function movementPhase(state: GameState, orders: TurnOrders): void {
     if (mp <= 0) {
       reject(state, phase, 'kraken is immobilised', { unitId: 'kraken' });
     } else {
-      const moved = moveUnit(state, 'kraken', 'kraken', state.krakenPosition, k.moveTo, mp);
-      if ('rejected' in moved) {
-        reject(state, phase, moved.rejected, { unitId: 'kraken' });
+      const plan = planMove(state, 'kraken', 'kraken', state.krakenPosition, k.moveTo, mp);
+      if (!plan) {
+        reject(state, phase, 'no legal path to destination', { unitId: 'kraken' });
       } else {
+        // step-walk: overruns resolve hex by hex as the machine advances
         const from = state.krakenPosition;
-        state.krakenPosition = moved.to;
-        emit(state, phase, 'krakenMoved', { from, to: moved.to, mpSpent: moved.mpSpent });
+        let current = from;
+        let spent = 0;
+        for (let i = 1; i <= plan.reachableIndex; i++) {
+          const next = plan.path[i]!;
+          const occupant = state.defenders.find(
+            (u) => u.state !== 'dead' && hexEquals(u.position, next),
+          );
+          if (occupant && resolveOverrun(state, occupant) === 'blocked') break;
+          spent += stepCostFor(state.map, 'kraken', current, next)!;
+          current = next;
+        }
+        if (!hexEquals(current, from)) {
+          state.krakenPosition = current;
+          emit(state, phase, 'krakenMoved', { from, to: current, mpSpent: Math.min(spent, mp) });
+        }
       }
     }
   }

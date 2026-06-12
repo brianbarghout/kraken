@@ -16,10 +16,15 @@ import {
 import { hasLineOfSight } from './los';
 import { inBounds, MoverKind, stepCostFor } from './map';
 
-/** Hexes no unit may enter: every occupied hex plus the Command Post. */
+/**
+ * Hexes the mover may not enter. The Kraken overruns defender-occupied
+ * hexes (Phase 1.2 P3, D41), so only the CP blocks it; defenders are
+ * blocked by everything occupied.
+ */
 export function blockedHexes(state: GameState, except?: string): Set<string> {
   const blocked = new Set<string>([hexKey(state.map.commandPost)]);
-  if (except !== 'kraken') blocked.add(hexKey(state.krakenPosition));
+  if (except === 'kraken') return blocked;
+  blocked.add(hexKey(state.krakenPosition));
   for (const u of state.defenders) {
     if (u.state !== 'dead' && u.id !== except) blocked.add(hexKey(u.position));
   }
@@ -143,6 +148,8 @@ export interface MovePlan {
   /** index into path of the furthest hex reachable this turn */
   reachableIndex: number;
   totalCost: number;
+  /** defender-occupied hexes the path drives through (Kraken overruns, D41) */
+  overruns: Axial[];
 }
 
 /**
@@ -178,7 +185,16 @@ export function planMove(
     reachableIndex = i;
   }
   if (reachableIndex === 0 && mp > 0) reachableIndex = 1; // minimum-move rule
-  return { path, reachableIndex, totalCost: result.cost };
+
+  const overruns: Axial[] = [];
+  if (mover === 'kraken') {
+    for (const hex of path.slice(1)) {
+      if (state.defenders.some((u) => u.state !== 'dead' && hexEquals(u.position, hex))) {
+        overruns.push(hex);
+      }
+    }
+  }
+  return { path, reachableIndex, totalCost: result.cost, overruns };
 }
 
 export function planKrakenMove(
