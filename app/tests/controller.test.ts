@@ -75,6 +75,14 @@ describe('SoloController — order assembly', () => {
     expect(Array.isArray(s.killFeed)).toBe(true);
   });
 
+  test('fireCheck surfaces the exact failed check for the UI', () => {
+    const c = makeController();
+    const far = c.state.defenders[0]!; // across the map
+    expect(c.fireCheck({ weapon: 'mainBattery', targetUnitId: far.id })).toContain('range');
+    expect(c.fireCheck({ weapon: 'mainBattery', targetCommandPost: true })).toContain('range');
+    expect(c.fireCheck({ weapon: 'missileRack1', targetHex: at(15, 7) })).toBeNull();
+  });
+
   test('turnsRemaining counts down from the 85-turn limit', () => {
     const c = makeController();
     expect(c.turnsRemaining).toBe(85);

@@ -8,8 +8,9 @@ import {
   canMissileTargetHex,
   validKrakenTargets,
   planKrakenMove,
+  weaponEnvelope,
 } from '../src/targeting';
-import { offsetToAxial } from '../src/hex';
+import { hexKey, offsetToAxial } from '../src/hex';
 
 const at = offsetToAxial;
 
@@ -55,6 +56,34 @@ describe('valid-target computation mirrors resolver rules', () => {
     expect(canMissileTargetHex(g, 'missileRack1', at(32, 20))).toBe(true); // 12 away
     expect(canMissileTargetHex(g, 'missileRack1', at(20, 14))).toBe(false); // too far
     expect(canMissileTargetHex(g, 'mainBattery' as never, at(40, 14))).toBe(false); // not a missile
+  });
+});
+
+describe('weaponEnvelope — per-hex targeting picture for the UI', () => {
+  test('direct weapon: open hexes valid, mountain-shadowed hexes losBlocked', () => {
+    const g = createGameFromFiles({ mapId: 'map01', seed: 41 });
+    g.krakenPosition = at(20, 20); // mountains at cols 14-17 block westward
+    const env = weaponEnvelope(g, 'mainBattery'); // range 8
+    expect(env.get(hexKey(at(24, 20)))).toBe('valid'); // open, dist 4
+    expect(env.get(hexKey(at(13, 20)))).toBe('losBlocked'); // behind the wall, dist 7
+    expect(env.has(hexKey(at(30, 20)))).toBe(false); // dist 10 — outside range
+  });
+
+  test('hexes beyond damaged sensors are outOfSensors', () => {
+    const g = createGameFromFiles({ mapId: 'map01', seed: 43 });
+    applySystemDamage(g.kraken, 'sensorArray', 'damage');
+    applySystemDamage(g.kraken, 'sensorArray', 'damage'); // red: sensor range 4
+    const env = weaponEnvelope(g, 'mainBattery'); // weapon range 8 > sensors 4
+    expect(env.get(hexKey(at(38, 14)))).toBe('valid'); // dist 3
+    expect(env.get(hexKey(at(35, 14)))).toBe('outOfSensors'); // dist 6, open
+  });
+
+  test('missiles ignore LOS and sensors — everything in range is valid', () => {
+    const g = createGameFromFiles({ mapId: 'map01', seed: 47 });
+    applySystemDamage(g.kraken, 'sensorArray', 'kill');
+    const env = weaponEnvelope(g, 'missileRack1'); // range 12
+    expect(env.get(hexKey(at(30, 14)))).toBe('valid'); // dist 11, far beyond dark sensors
+    expect(env.has(hexKey(at(28, 14)))).toBe(false); // dist 13 — outside range
   });
 });
 

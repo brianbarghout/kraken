@@ -5,7 +5,7 @@
  * null when the action is legal.
  */
 import { GameState } from './game';
-import { aStar, Axial, hexDistance, hexEquals, hexKey } from './hex';
+import { aStar, Axial, hexDistance, hexEquals, hexKey, hexRange } from './hex';
 import {
   krakenSensorRange,
   krakenSpeed,
@@ -107,6 +107,34 @@ export function validKrakenTargets(state: GameState, weapon: KrakenWeaponId): Va
       .map((u) => u.id),
     commandPost: canKrakenFireAtCommandPost(state, weapon),
   };
+}
+
+export type EnvelopeStatus = 'valid' | 'losBlocked' | 'outOfSensors';
+
+/**
+ * Per-hex targeting picture for one weapon: every in-bounds hex within
+ * weapon range, classified. Missiles are indirect (GDD §8.5): no LOS or
+ * sensor requirement. Reusable for defender-side threat rings later.
+ */
+export function weaponEnvelope(
+  state: GameState,
+  weapon: KrakenWeaponId,
+): Map<string, EnvelopeStatus> {
+  const result = new Map<string, EnvelopeStatus>();
+  if (weaponAttack(state.kraken, state.data, weapon) <= 0) return result;
+  const range = weaponRange(state.data, weapon);
+  const sensors = krakenSensorRange(state.kraken, state.data);
+  const indirect = isMissile(weapon);
+  for (const hex of hexRange(state.krakenPosition, range)) {
+    if (!inBounds(state.map, hex)) continue;
+    let status: EnvelopeStatus = 'valid';
+    if (!indirect) {
+      if (hexDistance(state.krakenPosition, hex) > sensors) status = 'outOfSensors';
+      else if (!hasLineOfSight(state.map, state.krakenPosition, hex)) status = 'losBlocked';
+    }
+    result.set(hexKey(hex), status);
+  }
+  return result;
 }
 
 export interface MovePlan {

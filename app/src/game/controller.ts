@@ -76,16 +76,20 @@ export class SoloController {
     return true;
   }
 
-  /** Validates through engine targeting; one pending order per weapon (replaces). */
-  queueFire(order: KrakenFireOrder): boolean {
-    const err = order.targetHex
+  /** The exact engine check that would fail for this order, or null if legal. */
+  fireCheck(order: KrakenFireOrder): string | null {
+    return order.targetHex
       ? krakenFireCheckHex(this.state, order.weapon, order.targetHex)
       : order.targetCommandPost
         ? krakenFireCheckCommandPost(this.state, order.weapon)
         : order.targetUnitId
           ? krakenFireCheckUnit(this.state, order.weapon, order.targetUnitId)
           : 'no target';
-    if (err) return false;
+  }
+
+  /** Validates through engine targeting; one pending order per weapon (replaces). */
+  queueFire(order: KrakenFireOrder): boolean {
+    if (this.fireCheck(order)) return false;
     this.pending.fires = this.pending.fires.filter((f) => f.weapon !== order.weapon);
     this.pending.fires.push(order);
     return true;
