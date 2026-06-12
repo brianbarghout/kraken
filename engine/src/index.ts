@@ -12,3 +12,5 @@ export * from './combat';
 export * from './units';
 export * from './game';
 export * from './turn';
+export * from './visibility';
+export * from './targeting';

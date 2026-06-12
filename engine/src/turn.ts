@@ -13,22 +13,26 @@ import {
   TurnOrders,
   TurnPhase,
 } from './game';
-import { aStar, Axial, hexDistance, hexEquals, hexKey, hexRange } from './hex';
+import { Axial, hexDistance, hexEquals, hexRange } from './hex';
 import {
   applySystemDamage,
   armourOfSystem,
   isKrakenDestroyed,
-  krakenSensorRange,
   krakenSpeed,
   startRepair,
   systemKind,
   targetableSystems,
   tickRepair,
   weaponAttack,
-  weaponRange,
 } from './kraken';
 import { hasLineOfSight } from './los';
 import { inBounds, stepCostFor, terrainAt, MoverKind } from './map';
+import {
+  krakenFireCheckCommandPost,
+  krakenFireCheckHex,
+  krakenFireCheckUnit,
+  planMove,
+} from './targeting';
 import { applyDamageToDefender, defenderAttack, defenderSpeed, DefenderUnit } from './units';
 
 function emit(state: GameState, phase: TurnPhase, type: string, payload: object = {}): GameEvent {
@@ -41,20 +45,9 @@ function reject(state: GameState, phase: TurnPhase, reason: string, payload: obj
   emit(state, phase, 'orderRejected', { reason, ...payload });
 }
 
-/** Hexes no unit may enter: every occupied hex plus the Command Post. */
-function blockedHexes(state: GameState, except?: string): Set<string> {
-  const blocked = new Set<string>([hexKey(state.map.commandPost)]);
-  if (except !== 'kraken') blocked.add(hexKey(state.krakenPosition));
-  for (const u of state.defenders) {
-    if (u.state !== 'dead' && u.id !== except) blocked.add(hexKey(u.position));
-  }
-  return blocked;
-}
-
 /**
- * Move a unit toward `destination` spending at most `mp` movement points.
- * Minimum-move rule (DECISIONS.md): a unit that could not otherwise move
- * may always take one legal step.
+ * Move a unit toward `destination` spending at most `mp` movement points,
+ * using the shared planMove pathing (same logic the UI previews).
  */
 function moveUnit(
   state: GameState,
@@ -64,34 +57,13 @@ function moveUnit(
   destination: Axial,
   mp: number,
 ): { to: Axial; mpSpent: number } | { rejected: string } {
-  if (!inBounds(state.map, destination)) return { rejected: 'destination out of bounds' };
-  const blocked = blockedHexes(state, moverId);
-  // an occupied destination can still be approached — path to it, stop short
-  const destinationOccupied = blocked.has(hexKey(destination));
-  const result = aStar(from, destination, (a, b) => {
-    if (!inBounds(state.map, b)) return null;
-    if (blocked.has(hexKey(b)) && !(destinationOccupied && hexEquals(b, destination))) return null;
-    return stepCostFor(state.map, mover, a, b);
-  });
-  if (!result || result.path.length < 2) return { rejected: 'no path to destination' };
-
-  const path = destinationOccupied ? result.path.slice(0, -1) : result.path;
-  if (path.length < 2) return { rejected: 'destination occupied' };
-
+  const plan = planMove(state, mover, moverId, from, destination, mp);
+  if (!plan) return { rejected: 'no legal path to destination' };
   let spent = 0;
-  let reached = from;
-  for (let i = 1; i < path.length; i++) {
-    const step = stepCostFor(state.map, mover, path[i - 1]!, path[i]!)!;
-    if (spent + step > mp) break;
-    spent += step;
-    reached = path[i]!;
+  for (let i = 1; i <= plan.reachableIndex; i++) {
+    spent += stepCostFor(state.map, mover, plan.path[i - 1]!, plan.path[i]!)!;
   }
-  if (hexEquals(reached, from) && mp > 0) {
-    // minimum-move rule: one hex per turn is always possible
-    reached = path[1]!;
-    spent = mp;
-  }
-  return { to: reached, mpSpent: spent };
+  return { to: plan.path[plan.reachableIndex]!, mpSpent: Math.min(spent, mp) };
 }
 
 function defenderById(state: GameState, id: string): DefenderUnit | undefined {
@@ -318,21 +290,12 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
       continue;
     }
     firedWeapons.add(fire.weapon);
-    const range = weaponRange(state.data, fire.weapon);
 
     if (fire.targetHex) {
       // indirect — missiles only (GDD §8.5: can fire blind)
-      const isMissile = fire.weapon === 'missileRack1' || fire.weapon === 'missileRack2';
-      if (!isMissile) {
-        reject(state, phase, 'only missiles fire at hexes', { weapon: fire.weapon });
-        continue;
-      }
-      if (!inBounds(state.map, fire.targetHex)) {
-        reject(state, phase, 'target hex out of bounds', { weapon: fire.weapon });
-        continue;
-      }
-      if (hexDistance(state.krakenPosition, fire.targetHex) > range) {
-        reject(state, phase, 'target hex out of range', { weapon: fire.weapon });
+      const err = krakenFireCheckHex(state, fire.weapon, fire.targetHex);
+      if (err) {
+        reject(state, phase, err, { weapon: fire.weapon });
         continue;
       }
       const aimed = hasLineOfSight(state.map, state.krakenPosition, fire.targetHex);
@@ -360,17 +323,9 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
     }
 
     if (fire.targetCommandPost) {
-      const cpHex = state.map.commandPost;
-      if (state.commandPost.state === 'destroyed') {
-        reject(state, phase, 'command post already destroyed', { weapon: fire.weapon });
-        continue;
-      }
-      if (hexDistance(state.krakenPosition, cpHex) > range) {
-        reject(state, phase, 'command post out of range', { weapon: fire.weapon });
-        continue;
-      }
-      if (!hasLineOfSight(state.map, state.krakenPosition, cpHex)) {
-        reject(state, phase, 'no line of sight to command post', { weapon: fire.weapon });
+      const err = krakenFireCheckCommandPost(state, fire.weapon);
+      if (err) {
+        reject(state, phase, err, { weapon: fire.weapon });
         continue;
       }
       const armour = state.data.commandPost.armour;
@@ -390,24 +345,12 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
     }
 
     if (fire.targetUnitId) {
-      const target = defenderById(state, fire.targetUnitId);
-      if (!target) {
-        reject(state, phase, 'target gone', { weapon: fire.weapon });
+      const err = krakenFireCheckUnit(state, fire.weapon, fire.targetUnitId);
+      if (err) {
+        reject(state, phase, err, { weapon: fire.weapon });
         continue;
       }
-      const dist = hexDistance(state.krakenPosition, target.position);
-      if (dist > range) {
-        reject(state, phase, 'target out of range', { weapon: fire.weapon });
-        continue;
-      }
-      if (dist > krakenSensorRange(state.kraken, state.data)) {
-        reject(state, phase, 'target outside sensor range', { weapon: fire.weapon });
-        continue;
-      }
-      if (!hasLineOfSight(state.map, state.krakenPosition, target.position)) {
-        reject(state, phase, 'no line of sight', { weapon: fire.weapon });
-        continue;
-      }
+      const target = defenderById(state, fire.targetUnitId)!;
       const armour = state.data.defenders[target.type].armour;
       const result = resolveAttack(attack, armour, state.data, state.rng);
       emit(state, phase, 'attackResolved', {
