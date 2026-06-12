@@ -1,0 +1,104 @@
+{
+  "$comment": "KRAKEN unit & game constants — GDD v1.3 §8.5/§13. All values playtest-tunable. Turn conversion: 30 min / 85 turns ≈ 21 s per turn (see docs/DECISIONS.md D2).",
+  "game": {
+    "turnLimit": 85,
+    "secondsPerTurn": 21
+  },
+  "combat": {
+    "killMultiplier": 2,
+    "damageRollChance": 0.5,
+    "damagedAttackMultiplier": 0.5,
+    "damagedSpeedPenalty": 1
+  },
+  "artilleryFire": {
+    "landingDelayTurns": 1,
+    "scatter": { "aimed": 0, "spotted": 1, "blind": 2 },
+    "splashRadius": 1,
+    "splashAttackMultiplier": 0.5
+  },
+  "commandPost": {
+    "armour": 3
+  },
+  "defenders": {
+    "heavyTank": {
+      "name": "Heavy Tank",
+      "speed": 2,
+      "attack": 4,
+      "range": 4,
+      "armour": 3,
+      "special": { "mainBatteryGlanceSurvivalChance": 0.5 }
+    },
+    "lightTank": {
+      "name": "Light Tank",
+      "speed": 3,
+      "attack": 3,
+      "range": 3,
+      "armour": 2,
+      "special": { "hillClimbMultiplier": 1.5, "autoDamageVsTreads": true }
+    },
+    "gev": {
+      "name": "GEV",
+      "speed": 5,
+      "attack": 2,
+      "range": 3,
+      "armour": 1,
+      "special": { "ignoresTerrain": ["river", "swamp"], "shootAndScoot": true }
+    },
+    "artillery": {
+      "name": "Artillery SPG",
+      "speed": 2,
+      "attack": 6,
+      "range": 9,
+      "armour": 1,
+      "special": {
+        "speedOnFiringTurn": 1,
+        "ridgeRange": 11,
+        "indirect": true
+      }
+    },
+    "scoutBike": {
+      "name": "Scout Bike",
+      "speed": 6,
+      "attack": 0,
+      "range": 0,
+      "armour": 0,
+      "special": { "revealRadius": 4 }
+    }
+  },
+  "kraken": {
+    "speed": 3,
+    "sensorRangeByState": { "green": 10, "amber": 7, "red": 4, "dark": 2 },
+    "weapons": {
+      "mainBattery": { "count": 1, "attack": 6, "range": 8 },
+      "secondary": { "count": 2, "attack": 3, "range": 5 },
+      "antiPersonnel": { "count": 2, "attack": 2, "range": 3 },
+      "missileRack": { "count": 2, "attack": 5, "range": 12, "indirect": true }
+    },
+    "systemArmour": {
+      "tread": 2,
+      "weapon": 3,
+      "sensorArray": 2,
+      "smokeDispensers": 2,
+      "repairPrinters": 4
+    },
+    "stateAttackMultiplier": { "green": 1, "amber": 0.75, "red": 0.5, "dark": 0 },
+    "treadSpeedContribution": { "green": 1.5, "amber": 1, "red": 0.5, "dark": 0 },
+    "treadAsymmetryPenaltyThreshold": 2,
+    "repair": {
+      "turnsBySystem": {
+        "smokeDispensers": 4,
+        "sensorArray": 6,
+        "weapon": 9,
+        "tread": 13
+      },
+      "maxSpeedWhileRepairing": 1,
+      "repairedStateCap": "amber"
+    },
+    "smoke": {
+      "durationTurns": 3,
+      "cooldownTurns": 5,
+      "radius": 1,
+      "scatterPenalty": 1
+    }
+  }
+}
