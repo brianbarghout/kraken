@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { SystemState, TerrainId } from '../../../engine/src/data';
 import { GameEvent } from '../../../engine/src/game';
-import { Axial, axialToOffset, hexKey, offsetToAxial } from '../../../engine/src/hex';
+import { Axial, axialToOffset, hexKey, offsetToAxial, parseHexKey as parseKey } from '../../../engine/src/hex';
 import { KrakenSystemId } from '../../../engine/src/kraken';
 import { GameMap, terrainAt } from '../../../engine/src/map';
 import { DefenderType } from '../../../engine/src/data';
@@ -66,6 +66,12 @@ export interface SnapshotDefender {
   position: Axial;
 }
 
+export interface LockedTarget {
+  weapon: string;
+  color: number;
+  hex: Axial;
+}
+
 export interface SceneSnapshot {
   krakenPos: Axial;
   krakenSystems: Record<KrakenSystemId, SystemState>;
@@ -77,6 +83,12 @@ export interface SceneSnapshot {
   highlightUnitIds: Set<string>;
   highlightCp: boolean;
   cpState: string;
+  /** armed-weapon targeting picture: hexKey -> 'valid' | 'losBlocked' | 'outOfSensors' */
+  envelope: Map<string, string> | null;
+  envelopeColor: number;
+  /** world-space radius of the sensor horizon ring, when tighter than weapon range */
+  sensorHorizonRadius: number | null;
+  lockedTargets: LockedTarget[];
 }
 
 export interface PickResult {
@@ -111,6 +123,9 @@ export class TacticalScene {
   private highlightRings: THREE.Mesh[] = [];
   private smokeGroup = new THREE.Group();
   private fxGroup = new THREE.Group();
+  private envelopeGroup = new THREE.Group();
+  private lockGroup = new THREE.Group();
+  private reticles: THREE.Group[] = [];
 
   private animations: Anim[] = [];
   private lookTarget = new THREE.Vector3();
@@ -139,6 +154,9 @@ export class TacticalScene {
     this.scene.add(sun);
     this.scene.add(this.smokeGroup);
     this.scene.add(this.fxGroup);
+    this.scene.add(this.envelopeGroup);
+    this.scene.add(this.lockGroup);
+    this.envelopeGroup.traverse((o) => (o.raycast = () => {}));
 
     this.buildTerrain();
     this.buildKraken();
@@ -371,6 +389,94 @@ export class TacticalScene {
     this.updatePathPreview(snap);
     this.updateHighlights(snap);
     this.updateSmoke(snap);
+    this.updateEnvelope(snap);
+    this.updateLocks(snap);
+  }
+
+  /** P2: range band + sensor horizon + LOS shadows for the armed weapon. */
+  private updateEnvelope(snap: SceneSnapshot): void {
+    this.envelopeGroup.clear();
+    if (snap.envelope) {
+      const buckets: Record<string, Axial[]> = { valid: [], losBlocked: [], outOfSensors: [] };
+      for (const [key, status] of snap.envelope) {
+        const { q, r } = parseKey(key);
+        buckets[status]?.push({ q, r });
+      }
+      const styles: Record<string, { color: number; opacity: number; y: number }> = {
+        valid: { color: snap.envelopeColor, opacity: 0.2, y: 0.05 },
+        losBlocked: { color: 0x05070a, opacity: 0.55, y: 0.07 },
+        outOfSensors: { color: 0x3c4a5e, opacity: 0.45, y: 0.06 },
+      };
+      const dummy = new THREE.Object3D();
+      for (const [status, hexes] of Object.entries(buckets)) {
+        if (hexes.length === 0) continue;
+        const style = styles[status]!;
+        const mesh = new THREE.InstancedMesh(
+          new THREE.CylinderGeometry(0.93, 0.93, 0.03, 6),
+          new THREE.MeshBasicMaterial({ color: style.color, transparent: true, opacity: style.opacity, depthWrite: false }),
+          hexes.length,
+        );
+        hexes.forEach((hex, i) => {
+          const p = hexToWorld(hex);
+          dummy.position.set(p.x, this.groundHeight(hex) + style.y, p.z);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        });
+        mesh.raycast = () => {};
+        this.envelopeGroup.add(mesh);
+      }
+    }
+    if (snap.sensorHorizonRadius !== null) {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(a) * snap.sensorHorizonRadius, 0.5, Math.sin(a) * snap.sensorHorizonRadius));
+      }
+      const ring = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: 0xbfd3df, transparent: true, opacity: 0.35 }),
+      );
+      const kp = hexToWorld(snap.krakenPos);
+      ring.position.set(kp.x, 0, kp.z);
+      ring.raycast = () => {};
+      this.envelopeGroup.add(ring);
+    }
+  }
+
+  /** P1: pulsing corner-bracket reticles + targeting lines for locked targets. */
+  private updateLocks(snap: SceneSnapshot): void {
+    this.lockGroup.clear();
+    this.reticles = [];
+    const kp = hexToWorld(snap.krakenPos).setY(this.groundHeight(snap.krakenPos) + 1.3);
+    for (const lock of snap.lockedTargets) {
+      const tp = hexToWorld(lock.hex);
+      const y = this.groundHeight(lock.hex);
+      // targeting line — the fan of fire
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([kp, new THREE.Vector3(tp.x, y + 0.7, tp.z)]),
+        new THREE.LineBasicMaterial({ color: lock.color, transparent: true, opacity: 0.8 }),
+      );
+      line.raycast = () => {};
+      this.lockGroup.add(line);
+      // corner brackets — unmistakably different from the circular "targetable" ring
+      const reticle = new THREE.Group();
+      const s = 0.8;
+      const l = 0.34;
+      const mat = new THREE.LineBasicMaterial({ color: lock.color });
+      for (const [cx, cz] of [[-s, -s], [s, -s], [s, s], [-s, s]] as const) {
+        const pts = [
+          new THREE.Vector3(cx - Math.sign(cx) * l, 0, cz),
+          new THREE.Vector3(cx, 0, cz),
+          new THREE.Vector3(cx, 0, cz - Math.sign(cz) * l),
+        ];
+        const corner = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+        corner.raycast = () => {};
+        reticle.add(corner);
+      }
+      reticle.position.set(tp.x, y + 0.12, tp.z);
+      this.lockGroup.add(reticle);
+      this.reticles.push(reticle);
+    }
   }
 
   private groundHeight(hex: Axial): number {
@@ -752,6 +858,14 @@ export class TacticalScene {
     this.animations = this.animations.filter(
       (a) => a.duration > 0 && (a.elapsed ?? 0) - a.delay < a.duration,
     );
+
+    // locked-target reticles pulse so commitment can't be missed
+    const now = performance.now() / 1000;
+    this.reticles.forEach((r, i) => {
+      const s = 1 + 0.14 * Math.sin(now * 5 + i * 1.3);
+      r.scale.set(s, 1, s);
+      r.rotation.y = Math.sin(now * 0.8 + i) * 0.1;
+    });
 
     const cam = this.lookTarget
       .clone()

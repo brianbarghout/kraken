@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GameEvent } from '../../../engine/src/game';
-import { hexEquals } from '../../../engine/src/hex';
-import { isMissile } from '../../../engine/src/targeting';
-import { validKrakenTargets, canKrakenFireAtCommandPost } from '../../../engine/src/targeting';
+import { GameEvent, KrakenFireOrder } from '../../../engine/src/game';
+import { Axial, hexEquals } from '../../../engine/src/hex';
+import { krakenSensorRange } from '../../../engine/src/kraken';
+import { isMissile, validKrakenTargets, weaponEnvelope } from '../../../engine/src/targeting';
 import { detectedDefenders, krakenVisibleHexKeys } from '../../../engine/src/visibility';
 import { SoloController } from '../game/controller';
-import { PickResult, SceneSnapshot, TacticalScene } from '../three/scene';
+import { WEAPON_META, weaponStats } from '../game/weaponMeta';
+import { LockedTarget, PickResult, SceneSnapshot, TacticalScene } from '../three/scene';
 import { TacticalView } from '../three/TacticalView';
 import { ControlBar, InputMode } from './ControlBar';
 import { Dashboard } from './Dashboard';
 import { MiniMap } from './MiniMap';
+
+/** Name the actual failed check (Phase 1.1 P2.5) — never a list of maybes. */
+function blockedMessage(reason: string): string {
+  if (reason.includes('sensor')) return 'Blocked: beyond sensor range';
+  if (reason.includes('line of sight')) return 'Blocked: line of sight';
+  if (reason.includes('range')) return 'Blocked: out of range';
+  if (reason.includes('destroyed')) return 'Blocked: weapon destroyed';
+  return `Blocked: ${reason}`;
+}
 
 export function GameScreen({
   controller,
@@ -18,7 +28,7 @@ export function GameScreen({
   controller: SoloController;
   onGameOver: () => void;
 }) {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   const [mode, setMode] = useState<InputMode>('move');
   const [busy, setBusy] = useState(false);
@@ -37,6 +47,16 @@ export function GameScreen({
     const s = controller.state;
     const armedTargets =
       mode !== 'move' ? validKrakenTargets(s, mode) : { unitIds: [], commandPost: false };
+    const sensors = krakenSensorRange(s.kraken, s.data);
+    const lockedTargets: LockedTarget[] = [];
+    for (const f of controller.pending.fires) {
+      const hex: Axial | undefined = f.targetHex
+        ? f.targetHex
+        : f.targetCommandPost
+          ? s.map.commandPost
+          : s.defenders.find((u) => u.id === f.targetUnitId)?.position;
+      if (hex) lockedTargets.push({ weapon: f.weapon, color: WEAPON_META[f.weapon].color, hex });
+    }
     return {
       krakenPos: s.krakenPosition,
       krakenSystems: { ...s.kraken.systems },
@@ -50,12 +70,26 @@ export function GameScreen({
       smokeCenters: s.smokeClouds.filter((c) => c.expiresTurn >= s.turn).flatMap((c) => c.hexes),
       pathPreview: controller.movePlan?.path ?? null,
       reachableIndex: controller.movePlan?.reachableIndex ?? 0,
-      highlightUnitIds: new Set(armedTargets.unitIds),
-      highlightCp: armedTargets.commandPost,
+      // a locked unit's ring is REPLACED by its reticle (P1.1)
+      highlightUnitIds: new Set(
+        armedTargets.unitIds.filter(
+          (id) => !controller.pending.fires.some((f) => f.targetUnitId === id),
+        ),
+      ),
+      highlightCp:
+        armedTargets.commandPost &&
+        !controller.pending.fires.some((f) => f.targetCommandPost),
       cpState: s.commandPost.state,
+      envelope: mode !== 'move' && !busy ? weaponEnvelope(s, mode) : null,
+      envelopeColor: mode !== 'move' ? WEAPON_META[mode].color : 0xffffff,
+      sensorHorizonRadius:
+        mode !== 'move' && !busy && !isMissile(mode) && sensors < weaponStats(s.data, mode).range
+          ? (sensors + 0.5) * 1.62
+          : null,
+      lockedTargets,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controller, mode, busy, controller.state.turn, controller.pending, controller.movePlan]);
+  }, [controller, mode, busy, tick, controller.state.turn, controller.movePlan]);
 
   const onPick = useCallback(
     (pick: PickResult) => {
@@ -69,21 +103,35 @@ export function GameScreen({
         bump();
         return;
       }
-      // a weapon is armed
+      // a weapon is armed — build the intended order
       const weapon = mode;
-      let ok = false;
+      let order: KrakenFireOrder | null = null;
       if (pick.unitId) {
-        ok = controller.queueFire({ weapon, targetUnitId: pick.unitId });
+        order = { weapon, targetUnitId: pick.unitId };
       } else if (hexEquals(pick.hex, controller.state.map.commandPost)) {
-        ok = controller.queueFire({ weapon, targetCommandPost: true });
+        order = { weapon, targetCommandPost: true };
       } else if (isMissile(weapon)) {
-        ok = controller.queueFire({ weapon, targetHex: pick.hex });
+        order = { weapon, targetHex: pick.hex };
       }
-      if (ok) {
-        setHint(`${weapon} locked. Arm another weapon or End Turn.`);
-        setMode('move');
+      if (!order) {
+        setHint(`Select a ringed target for ${WEAPON_META[weapon].label}.`);
+        bump();
+        return;
+      }
+      // tap the locked target again to unlock (P1.4)
+      const existing = controller.pending.fires.find((f) => f.weapon === weapon);
+      if (existing && sameTarget(existing, order)) {
+        controller.clearFire(weapon);
+        setHint(`${WEAPON_META[weapon].label} unlocked.`);
+        bump();
+        return;
+      }
+      const reason = controller.fireCheck(order);
+      if (reason === null) {
+        controller.queueFire(order);
+        setHint(`${WEAPON_META[weapon].label} locked. Tap again to unlock, or pick another target.`);
       } else {
-        setHint('Invalid target for that weapon (range, sensors, or line of sight).');
+        setHint(blockedMessage(reason));
       }
       bump();
     },
@@ -147,6 +195,13 @@ export function GameScreen({
       </div>
     </div>
   );
+}
+
+function sameTarget(a: KrakenFireOrder, b: KrakenFireOrder): boolean {
+  if (a.targetUnitId || b.targetUnitId) return a.targetUnitId === b.targetUnitId;
+  if (a.targetCommandPost || b.targetCommandPost) return !!a.targetCommandPost === !!b.targetCommandPost;
+  if (a.targetHex && b.targetHex) return hexEquals(a.targetHex, b.targetHex);
+  return false;
 }
 
 function describeEvents(events: GameEvent[]): { text: string; tone: string }[] {

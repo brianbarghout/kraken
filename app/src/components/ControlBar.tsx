@@ -1,15 +1,7 @@
+import { useState } from 'react';
 import { KrakenWeaponId, weaponAttack, WEAPON_SYSTEMS } from '../../../engine/src/kraken';
 import { SoloController } from '../game/controller';
-
-const WEAPON_LABEL: Record<KrakenWeaponId, string> = {
-  mainBattery: 'Main',
-  secondary1: 'Sec L',
-  secondary2: 'Sec R',
-  antiPersonnel1: 'AP L',
-  antiPersonnel2: 'AP R',
-  missileRack1: 'Msl L',
-  missileRack2: 'Msl R',
-};
+import { targetTag, WEAPON_META, weaponStats } from '../game/weaponMeta';
 
 export type InputMode = 'move' | KrakenWeaponId;
 
@@ -27,6 +19,7 @@ export function ControlBar({
   busy: boolean;
 }) {
   const { state, pending } = controller;
+  const [tooltip, setTooltip] = useState<KrakenWeaponId | null>(null);
   const smokeReady =
     state.kraken.smokeCooldown === 0 && state.kraken.systems.smokeDispensers !== 'dark';
   return (
@@ -39,22 +32,36 @@ export function ControlBar({
         Move
       </button>
       {WEAPON_SYSTEMS.map((w) => {
+        const meta = WEAPON_META[w];
         const usable = weaponAttack(state.kraken, state.data, w) > 0;
-        const queued = pending.fires.some((f) => f.weapon === w);
+        const lock = pending.fires.find((f) => f.weapon === w);
+        const armed = mode === w;
+        // bar reads as the fire plan: idle / armed / locked (P1.3)
+        const className = armed ? 'armed' : lock ? 'locked' : '';
+        const style =
+          lock || armed ? { borderColor: meta.css, color: meta.css } : undefined;
         return (
-          <button
-            key={w}
-            className={mode === w ? 'armed' : queued ? 'primary' : ''}
-            disabled={busy || !usable}
-            onClick={() => {
-              if (queued) controller.clearFire(w);
-              setMode(mode === w ? 'move' : w);
-            }}
-            title={queued ? 'queued — tap to clear' : ''}
-          >
-            {WEAPON_LABEL[w]}
-            {queued ? ' ✓' : ''}
-          </button>
+          <span key={w} style={{ position: 'relative' }}>
+            <button
+              className={className}
+              style={style}
+              disabled={busy || !usable}
+              onClick={() => setMode(armed ? 'move' : w)}
+              onMouseEnter={() => setTooltip(w)}
+              onMouseLeave={() => setTooltip(null)}
+              onTouchStart={() => setTooltip(w)}
+              onTouchEnd={() => setTimeout(() => setTooltip(null), 1200)}
+            >
+              {meta.label}
+              {lock ? ` ◉ ${targetTag(lock)}` : ''}
+            </button>
+            {tooltip === w && (
+              <span className="weapon-tip">
+                {meta.fullName} · ATK {weaponStats(state.data, w).attack} · RNG{' '}
+                {weaponStats(state.data, w).range}
+              </span>
+            )}
+          </span>
         );
       })}
       <button

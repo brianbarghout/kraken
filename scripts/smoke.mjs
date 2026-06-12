@@ -78,6 +78,36 @@ await run('desktop-damaged', { width: 1280, height: 800 }, async (page) => {
   await page.waitForTimeout(2600);
 });
 
+// P1/P2: armed range band + LOS shadows, two locked targets with reticles/lines/badges
+await run('desktop-targeting', { width: 1280, height: 800 }, async (page) => {
+  await page.goto(base + '?dev=1', { waitUntil: 'networkidle' });
+  await page.getByText('Begin Assault').click();
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => {
+    const { controller, bump } = window.__kraken;
+    const k = controller.state.krakenPosition;
+    const d = controller.state.defenders;
+    d[0].position = { q: k.q - 2, r: k.r }; // 2 hexes west — in everything's range
+    d[1].position = { q: k.q - 4, r: k.r }; // 4 hexes west — secondaries reach
+    bump();
+  });
+  await page.getByRole('button', { name: 'Main', exact: true }).click(); // arm: envelope visible
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const { controller, bump } = window.__kraken;
+    const d = controller.state.defenders;
+    if (!controller.queueFire({ weapon: 'mainBattery', targetUnitId: d[0].id }))
+      throw new Error('main lock failed');
+    if (!controller.queueFire({ weapon: 'secondary1', targetUnitId: d[1].id }))
+      throw new Error('secondary lock failed');
+    bump();
+  });
+  await page.waitForTimeout(600);
+  await page.mouse.move(470, 350);
+  await page.mouse.wheel(0, -1200); // zoom in on the lock cluster
+  await page.waitForTimeout(900);
+});
+
 await browser.close();
 if (errors.length > 0) {
   console.error('SMOKE FAILURES:');
