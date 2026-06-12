@@ -1,33 +1,38 @@
 # KRAKEN — Asset Register
 
-## Current state (Phase 1)
+## Current state (Phase 1.1)
 
-**All unit and terrain visuals are programmatic low-poly primitives** built
-in `app/src/three/scene.ts` (boxes/cylinders/cones, Lambert materials).
-The Phase 1 brief allows placeholders wherever a Kenney model doesn't fit
-("do not block on art") — and at the current camera distance the
-primitives read more clearly than imported models would, with zero asset
-pipeline. Swapping in real models later means touching only
-`buildKraken` / `buildDefender` / `buildTerrain`; nothing else knows
-about geometry.
+**Defender units and the Command Post use Kenney CC0 GLB models**
+(downloaded 2026-06-12 into `app/public/assets/kenney/<pack>/`), tinted
+toward faction colours and composed in `app/src/three/scene.ts`. Kenney
+has no 3D military pack, so silhouettes are built from civilian/TD kits —
+distinct shapes matter more than literal tanks (Phase 1.1 P3):
 
-## Kenney.nl upgrade path (CC0, no attribution required)
-
-Per GDD §16.2, intended packs when we move past primitives:
-
-| Pack | URL | For |
+| Unit | Model(s) | Pack |
 |---|---|---|
-| Hexagon Kit | https://kenney.nl/assets/hexagon-kit | terrain tiles (hex-native) |
-| Tanks | https://kenney.nl/assets/tanks | heavy/light tank bodies |
-| 3D Road Tiles | https://kenney.nl/assets/3d-road-tiles | road hexes |
-| Nature Kit | https://kenney.nl/assets/nature-kit | trees, rocks |
-| Particle Pack | https://kenney.nl/assets/particle-pack | explosion/smoke sprites |
+| Heavy Tank | `tractor-shovel` + `weapon-turret` | Car Kit + Tower Defense Kit |
+| Light Tank | `suv` + `weapon-turret` (small) | Car Kit + Tower Defense Kit |
+| GEV | `race-future` (hover offset) | Car Kit |
+| Artillery SPG | `truck-flat` + `weapon-cannon` | Car Kit + Tower Defense Kit |
+| Scout Bike | `kart-oobi` | Car Kit |
+| Command Post | `tower-square-bottom-a` + `tower-square-top-a` | Tower Defense Kit |
 
-Download into `app/public/assets/<pack-name>/` and record the exact pack
-version here when added. License: CC0 1.0 Universal (all Kenney packs).
+**Packs used** (License: CC0 1.0 Universal, no attribution required):
 
-The Kraken itself stays custom (GDD §16.2: "it deserves a custom model") —
-Meshy.ai generation is a Phase 4 item.
+| Pack | URL | Version (zip hash) |
+|---|---|---|
+| Car Kit | https://kenney.nl/assets/car-kit | 1a312ec241-1775131960 |
+| Tower Defense Kit | https://kenney.nl/assets/tower-defense-kit | a402493eaa-1726471567 |
+
+Each pack folder carries its own `Textures/colormap.png` (the GLBs
+reference it relatively — do not flatten the folders).
+
+**The Kraken remains a custom primitive assembly** — per GDD §16.2 it
+deserves a custom model, and its per-system damage materials need named
+submeshes. Meshy.ai generation is a Phase 4 item. Terrain is programmatic
+instanced hex prisms (fog dimming needs per-instance colours).
+
+Primitive fallbacks remain in code for all units if model loading fails.
 
 ## Fonts (self-hosted, GDD §16.5)
 

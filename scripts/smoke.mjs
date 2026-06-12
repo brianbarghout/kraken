@@ -89,6 +89,12 @@ await run('desktop-targeting', { width: 1280, height: 800 }, async (page) => {
     const d = controller.state.defenders;
     d[0].position = { q: k.q - 2, r: k.r }; // 2 hexes west — in everything's range
     d[1].position = { q: k.q - 4, r: k.r }; // 4 hexes west — secondaries reach
+    // one of each remaining type in a line-up for the silhouette check
+    const types = ['heavyTank', 'lightTank', 'artillery', 'scoutBike'];
+    types.forEach((t, i) => {
+      const u = d.find((x) => x.type === t);
+      if (u) u.position = { q: k.q - 3, r: k.r + i - 1 };
+    });
     bump();
   });
   await page.getByRole('button', { name: 'Main', exact: true }).click(); // arm: envelope visible

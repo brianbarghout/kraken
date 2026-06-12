@@ -5,6 +5,7 @@
  * Pure imperative class — React wraps it in TacticalView.
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SystemState, TerrainId } from '../../../engine/src/data';
 import { GameEvent } from '../../../engine/src/game';
 import { Axial, axialToOffset, hexKey, offsetToAxial, parseHexKey as parseKey } from '../../../engine/src/hex';
@@ -58,6 +59,54 @@ const DEFENDER_COLOR: Record<DefenderType, number> = {
   artillery: 0xa07840,
   scoutBike: 0xd6c14f,
 };
+
+/** Kenney CC0 GLBs (docs/ASSETS.md) — distinct silhouette per unit type. */
+const MODEL_FILES = {
+  heavyTankBase: 'car-kit/tractor-shovel',
+  lightTankBase: 'car-kit/suv',
+  gev: 'car-kit/race-future',
+  artilleryBase: 'car-kit/truck-flat',
+  scout: 'car-kit/kart-oobi',
+  turret: 'tower-defense-kit/weapon-turret',
+  cannon: 'tower-defense-kit/weapon-cannon',
+  cpBottom: 'tower-defense-kit/tower-square-bottom-a',
+  cpTop: 'tower-defense-kit/tower-square-top-a',
+} as const;
+
+type ModelKey = keyof typeof MODEL_FILES;
+
+/** Clone a template with unique materials, tinted toward the faction colour. */
+function instantiate(template: THREE.Object3D, tint: number, lerp = 0.6): THREE.Object3D {
+  const clone = template.clone(true);
+  const tintColor = new THREE.Color(tint);
+  clone.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      o.material = mats.length === 1 ? mats[0]!.clone() : mats.map((m) => m.clone());
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        const lm = m as THREE.MeshStandardMaterial;
+        if (lm.color) lm.color.lerp(tintColor, lerp);
+      }
+    }
+  });
+  return clone;
+}
+
+/** Scale so the footprint's longest side equals `size`, bottom resting on y=0. */
+function normalize(obj: THREE.Object3D, size: number): THREE.Object3D {
+  const box = new THREE.Box3().setFromObject(obj);
+  const dims = box.getSize(new THREE.Vector3());
+  const s = size / Math.max(dims.x, dims.z);
+  const wrapper = new THREE.Group();
+  obj.scale.setScalar(s);
+  obj.position.set(
+    -((box.min.x + box.max.x) / 2) * s,
+    -box.min.y * s,
+    -((box.min.z + box.max.z) / 2) * s,
+  );
+  wrapper.add(obj);
+  return wrapper;
+}
 
 export interface SnapshotDefender {
   id: string;
@@ -162,6 +211,7 @@ export class TacticalScene {
     this.buildKraken();
     this.buildCommandPost();
     this.attachInput(canvas);
+    void this.loadModels();
 
     this.lookTarget.copy(hexToWorld(map.krakenSpawn));
     this.renderLoop();
@@ -248,35 +298,105 @@ export class TacticalScene {
 
   private buildKraken(): void {
     const g = new THREE.Group();
-    this.part('', new THREE.BoxGeometry(1.5, 0.5, 2.3), 0x46544c, 0, 0.55, 0, g); // hull
-    this.part('treadLeft', new THREE.BoxGeometry(0.42, 0.42, 2.5), STATE_COLOR.green, -0.95, 0.35, 0, g);
-    this.part('treadRight', new THREE.BoxGeometry(0.42, 0.42, 2.5), STATE_COLOR.green, 0.95, 0.35, 0, g);
-    const turret = this.part('mainBattery', new THREE.CylinderGeometry(0.42, 0.5, 0.32, 8), STATE_COLOR.green, 0, 0.95, -0.45, g);
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.09, 1.5, 6),
-      (turret.material as THREE.Material),
-    );
-    barrel.rotation.x = Math.PI / 2 - 0.12;
-    barrel.position.set(0, 0.1, -0.95);
-    turret.add(barrel);
-    this.part('secondary1', new THREE.BoxGeometry(0.3, 0.24, 0.5), STATE_COLOR.green, -0.62, 0.92, 0.2, g);
-    this.part('secondary2', new THREE.BoxGeometry(0.3, 0.24, 0.5), STATE_COLOR.green, 0.62, 0.92, 0.2, g);
-    this.part('antiPersonnel1', new THREE.BoxGeometry(0.2, 0.16, 0.3), STATE_COLOR.green, -0.5, 0.9, -0.85, g);
-    this.part('antiPersonnel2', new THREE.BoxGeometry(0.2, 0.16, 0.3), STATE_COLOR.green, 0.5, 0.9, -0.85, g);
-    this.part('missileRack1', new THREE.BoxGeometry(0.34, 0.3, 0.55), STATE_COLOR.green, -0.45, 0.95, 0.78, g);
-    this.part('missileRack2', new THREE.BoxGeometry(0.34, 0.3, 0.55), STATE_COLOR.green, 0.45, 0.95, 0.78, g);
-    const mast = this.part('sensorArray', new THREE.CylinderGeometry(0.05, 0.07, 0.7, 6), STATE_COLOR.green, 0, 1.45, 0.1, g);
+    // hull, glacis and skirts — it should read as a fortress on treads
+    this.part('', new THREE.BoxGeometry(1.7, 0.62, 2.7), 0x46544c, 0, 0.62, 0, g);
+    const glacis = this.part('', new THREE.BoxGeometry(1.5, 0.34, 0.7), 0x3c4a42, 0, 0.5, -1.45, g);
+    glacis.rotation.x = 0.4;
+    this.part('', new THREE.BoxGeometry(1.86, 0.2, 1.6), 0x515f57, 0, 0.98, 0.3, g); // deck
+    this.part('treadLeft', new THREE.BoxGeometry(0.5, 0.5, 3.0), STATE_COLOR.green, -1.08, 0.38, 0, g);
+    this.part('treadRight', new THREE.BoxGeometry(0.5, 0.5, 3.0), STATE_COLOR.green, 1.08, 0.38, 0, g);
+    const turret = this.part('mainBattery', new THREE.CylinderGeometry(0.48, 0.58, 0.4, 8), STATE_COLOR.green, 0, 1.15, -0.5, g);
+    for (const bx of [-0.12, 0.12]) {
+      const barrel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.08, 1.8, 6),
+        turret.material as THREE.Material,
+      );
+      barrel.rotation.x = Math.PI / 2 - 0.1;
+      barrel.position.set(bx, 0.12, -1.1);
+      turret.add(barrel);
+    }
+    this.part('secondary1', new THREE.BoxGeometry(0.34, 0.26, 0.56), STATE_COLOR.green, -0.72, 1.18, 0.2, g);
+    this.part('secondary2', new THREE.BoxGeometry(0.34, 0.26, 0.56), STATE_COLOR.green, 0.72, 1.18, 0.2, g);
+    this.part('antiPersonnel1', new THREE.BoxGeometry(0.22, 0.18, 0.32), STATE_COLOR.green, -0.56, 1.14, -1.0, g);
+    this.part('antiPersonnel2', new THREE.BoxGeometry(0.22, 0.18, 0.32), STATE_COLOR.green, 0.56, 1.14, -1.0, g);
+    this.part('missileRack1', new THREE.BoxGeometry(0.4, 0.34, 0.6), STATE_COLOR.green, -0.5, 1.2, 0.9, g);
+    this.part('missileRack2', new THREE.BoxGeometry(0.4, 0.34, 0.6), STATE_COLOR.green, 0.5, 1.2, 0.9, g);
+    const mast = this.part('sensorArray', new THREE.CylinderGeometry(0.05, 0.07, 0.9, 6), STATE_COLOR.green, 0, 1.75, 0.15, g);
     const dish = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), mast.material as THREE.Material);
     dish.position.y = 0.4;
     mast.add(dish);
-    this.part('smokeDispensers', new THREE.BoxGeometry(0.5, 0.18, 0.22), STATE_COLOR.green, 0, 0.92, 1.05, g);
-    g.scale.setScalar(1.15); // it should loom
+    this.part('smokeDispensers', new THREE.BoxGeometry(0.5, 0.18, 0.22), STATE_COLOR.green, 0, 1.1, 1.28, g);
+    g.scale.setScalar(1.3); // it should loom over everything on the field
     g.rotation.y = Math.PI / 2; // face west, toward the Command Post
     this.kraken = g;
     this.scene.add(g);
   }
 
+  private models: Partial<Record<ModelKey, THREE.Object3D>> = {};
+  private modelsReady = false;
+
+  /** Load Kenney GLBs; rebuild unit meshes when ready (primitive fallback meanwhile). */
+  private async loadModels(): Promise<void> {
+    const loader = new GLTFLoader();
+    try {
+      await Promise.all(
+        (Object.keys(MODEL_FILES) as ModelKey[]).map(async (key) => {
+          const gltf = await loader.loadAsync(`/assets/kenney/${MODEL_FILES[key]}.glb`);
+          this.models[key] = gltf.scene;
+        }),
+      );
+    } catch (err) {
+      console.warn('Kenney models unavailable, keeping primitives:', err);
+      return;
+    }
+    this.modelsReady = true;
+    for (const [, mesh] of this.defenderMeshes) this.scene.remove(mesh);
+    this.defenderMeshes.clear();
+    this.scene.remove(this.cpGroup);
+    this.buildCommandPost();
+    if (this.lastSnapshot) this.update(this.lastSnapshot);
+  }
+
+  private buildDefenderFromModels(unit: SnapshotDefender): THREE.Group {
+    const tint = DEFENDER_COLOR[unit.type];
+    const g = new THREE.Group();
+    const add = (key: ModelKey, size: number, opts: { y?: number; lerp?: number } = {}) => {
+      const part = normalize(instantiate(this.models[key]!, tint, opts.lerp ?? 0.6), size);
+      part.position.y = opts.y ?? 0;
+      g.add(part);
+      return part;
+    };
+    switch (unit.type) {
+      case 'heavyTank':
+        add('heavyTankBase', 1.0);
+        add('turret', 0.55, { y: 0.5, lerp: 0.4 });
+        break;
+      case 'lightTank':
+        add('lightTankBase', 0.78);
+        add('turret', 0.4, { y: 0.42, lerp: 0.4 });
+        break;
+      case 'gev':
+        add('gev', 0.85).position.y = 0.22; // it hovers
+        break;
+      case 'artillery': {
+        add('artilleryBase', 1.05);
+        const gun = add('cannon', 0.6, { y: 0.34, lerp: 0.35 });
+        gun.position.z = 0.18;
+        gun.rotation.x = -0.25;
+        break;
+      }
+      case 'scoutBike':
+        add('scout', 0.5, { lerp: 0.45 });
+        break;
+    }
+    g.traverse((o) => (o.userData.unitId = unit.id));
+    g.userData.unitId = unit.id;
+    g.rotation.y = Math.PI / 2; // face east, toward the oncoming Kraken
+    return g;
+  }
+
   private buildDefender(unit: SnapshotDefender): THREE.Group {
+    if (this.modelsReady) return this.buildDefenderFromModels(unit);
     const g = new THREE.Group();
     const color = DEFENDER_COLOR[unit.type];
     const mat = new THREE.MeshLambertMaterial({ color });
@@ -315,22 +435,50 @@ export class TacticalScene {
 
   private buildCommandPost(): void {
     const g = new THREE.Group();
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.5, 1.1),
-      new THREE.MeshLambertMaterial({ color: 0x3f6f8f }),
-    );
-    base.position.y = 0.4;
-    g.add(base);
-    const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.03, 1.0, 5),
-      new THREE.MeshLambertMaterial({ color: 0xbfd3df }),
-    );
-    mast.position.set(0.3, 1.1, 0.3);
-    g.add(mast);
+    if (this.modelsReady) {
+      const bottom = normalize(instantiate(this.models.cpBottom!, 0x3f6f8f, 0.35), 1.15);
+      const top = normalize(instantiate(this.models.cpTop!, 0x3f6f8f, 0.35), 0.95);
+      const bottomH = new THREE.Box3().setFromObject(bottom).getSize(new THREE.Vector3()).y;
+      top.position.y = bottomH * 0.92;
+      g.add(bottom, top);
+    } else {
+      const base = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.5, 1.1),
+        new THREE.MeshLambertMaterial({ color: 0x3f6f8f }),
+      );
+      base.position.y = 0.4;
+      g.add(base);
+      const mast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 1.0, 5),
+        new THREE.MeshLambertMaterial({ color: 0xbfd3df }),
+      );
+      mast.position.set(0.3, 1.1, 0.3);
+      g.add(mast);
+    }
     const p = hexToWorld(this.map.commandPost);
     g.position.set(p.x, 0.1, p.z);
     this.cpGroup = g;
     this.scene.add(g);
+  }
+
+  private tintCommandPost(cpState: string): void {
+    const tint = new THREE.Color(
+      cpState === 'destroyed'
+        ? 0x1c1c1c
+        : cpState === 'red'
+          ? 0xd9534f
+          : cpState === 'amber'
+            ? 0xe0a93c
+            : 0xffffff,
+    );
+    this.cpGroup.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        const m = o.material as THREE.MeshStandardMaterial;
+        if (!o.userData.baseColor) o.userData.baseColor = m.color.clone();
+        m.color.copy(o.userData.baseColor as THREE.Color);
+        if (cpState !== 'green') m.color.lerp(tint, 0.55);
+      }
+    });
   }
 
   // ------------------------------------------------------------- update
@@ -374,17 +522,7 @@ export class TacticalScene {
       mesh.visible = seen.has(id);
     }
 
-    // command post tint
-    const cpMat = (this.cpGroup.children[0] as THREE.Mesh).material as THREE.MeshLambertMaterial;
-    cpMat.color.set(
-      snap.cpState === 'destroyed'
-        ? 0x222222
-        : snap.cpState === 'red'
-          ? 0xd9534f
-          : snap.cpState === 'amber'
-            ? 0xe0a93c
-            : 0x3f6f8f,
-    );
+    this.tintCommandPost(snap.cpState);
 
     this.updatePathPreview(snap);
     this.updateHighlights(snap);
