@@ -13,5 +13,6 @@
     "resolveJsonModule": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "tests", "../engine/src", "../engine/data/**/*.json"]
+  "include": ["src", "../engine/src", "../engine/data/**/*.json"],
+  "exclude": ["../engine/src/node.ts"]
 }
