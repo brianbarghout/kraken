@@ -1,11 +1,9 @@
 /**
- * Typed loader for engine/data/units.json — the single home of every
+ * Types + pure parser for engine/data/units.json — the single home of every
  * numeric stat (GDD §8.5: "All values live in units.json — playtest-tunable
- * without code changes").
+ * without code changes"). Browser-safe: no node imports here; the Node
+ * file loader lives in node.ts.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 export type SystemState = 'green' | 'amber' | 'red' | 'dark';
 
@@ -101,9 +99,11 @@ export interface UnitData {
   };
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-
-export function loadUnitData(): UnitData {
-  const raw = readFileSync(join(here, '..', 'data', 'units.json'), 'utf-8');
-  return JSON.parse(raw) as UnitData;
+/** Parse already-loaded JSON (bundler import or file read) into UnitData. */
+export function parseUnitData(raw: unknown): UnitData {
+  const data = raw as UnitData;
+  if (!data?.game?.turnLimit || !data?.defenders || !data?.kraken) {
+    throw new Error('units.json: missing required sections');
+  }
+  return data;
 }

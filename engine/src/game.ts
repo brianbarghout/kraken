@@ -2,10 +2,10 @@
  * Game state, orders and the JSON event log (GDD §13.8: every event
  * logged from day one — a game is replayable from seed + orders).
  */
-import { DefenderType, loadUnitData, UnitData } from './data';
+import { DefenderType, UnitData } from './data';
 import { Axial } from './hex';
 import { createKraken, KrakenState, KrakenSystemId, KrakenWeaponId } from './kraken';
-import { GameMap, loadMap } from './map';
+import { GameMap } from './map';
 import { createRng, Rng } from './rng';
 import { createDefender, DefenderUnit } from './units';
 
@@ -88,13 +88,14 @@ export interface TurnOrders {
 }
 
 export interface CreateGameOptions {
-  mapId: string;
   seed: number;
+  /** parsed map + unit data — browser-safe; Node callers can use createGameFromFiles */
+  map: GameMap;
+  data: UnitData;
 }
 
 export function createGame(opts: CreateGameOptions): GameState {
-  const map = loadMap(opts.mapId);
-  const data = loadUnitData();
+  const { map, data } = opts;
   const state: GameState = {
     map,
     data,

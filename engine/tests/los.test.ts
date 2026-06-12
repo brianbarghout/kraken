@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { hasLineOfSight } from '../src/los';
-import { loadMap } from '../src/map';
+import { loadMap } from '../src/node';
 import { offsetToAxial } from '../src/hex';
 
 const base = loadMap('map01');

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { createGame, DefenderOrder, GameState, spawnDefenderAt } from '../src/game';
+import { DefenderOrder, GameState, spawnDefenderAt } from '../src/game';
+import { createGameFromFiles } from '../src/node';
 import { resolveTurn } from '../src/turn';
 import { hexDistance, hexNeighbors, offsetToAxial } from '../src/hex';
 import { hasLineOfSight } from '../src/los';
@@ -11,7 +12,7 @@ const at = offsetToAxial;
 
 describe('integration: full headless games', () => {
   test('an unopposed Kraken reaches and destroys the Command Post well inside 85 turns', () => {
-    const g = createGame({ mapId: 'map01', seed: 1001 });
+    const g = createGameFromFiles({ mapId: 'map01', seed: 1001 });
     const cp = g.map.commandPost;
     const approach = hexNeighbors(cp).find(
       (h) => inBounds(g.map, h) && stepCostFor(g.map, 'kraken', cp, h) !== null,
@@ -33,7 +34,7 @@ describe('integration: full headless games', () => {
 
   /** Deterministic rule-based scripted battle, GDD Tier-1-AI flavoured. */
   function playFullBattle(seed: number): GameState {
-    const g = createGame({ mapId: 'map01', seed });
+    const g = createGameFromFiles({ mapId: 'map01', seed });
     const spawns = g.map.defenderSpawns;
     const force = [
       ['heavyTank', 'tanks'],

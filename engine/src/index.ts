@@ -1,4 +1,7 @@
-/** KRAKEN engine — public API (Phase 0, headless). */
+/**
+ * KRAKEN engine — public API, browser-safe (no node imports).
+ * Node-only file loaders are in './node' (tests + CLI).
+ */
 export * from './rng';
 export * from './hex';
 export * from './data';

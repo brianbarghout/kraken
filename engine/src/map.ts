@@ -1,10 +1,8 @@
 /**
- * Map loading + terrain movement costs (GDD §6.2/§6.3). Maps are
+ * Map parsing + terrain movement costs (GDD §6.2/§6.3). Maps are
  * data-driven JSON: odd-r offset rows of single-char terrain codes.
+ * Browser-safe: no node imports here; the Node file loader is in node.ts.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { DefenderType, TerrainId } from './data';
 import { Axial, axialToOffset, offsetToAxial } from './hex';
 
@@ -32,7 +30,7 @@ export interface GameMap {
   defenderSpawns: Axial[];
 }
 
-interface RawMap {
+export interface RawMap {
   id: string;
   name: string;
   legend: Record<string, TerrainId>;
@@ -43,12 +41,12 @@ interface RawMap {
   defenderSpawns: { col: number; row: number }[];
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-
-export function loadMap(id: string): GameMap {
-  const raw = JSON.parse(
-    readFileSync(join(here, '..', 'data', 'maps', `${id}.json`), 'utf-8'),
-  ) as RawMap;
+/** Parse already-loaded map JSON (bundler import or file read) into a GameMap. */
+export function parseMap(rawInput: unknown): GameMap {
+  const raw = rawInput as RawMap;
+  if (!raw?.rows?.length || !raw.legend || !raw.terrain) {
+    throw new Error('map JSON: missing rows/legend/terrain');
+  }
   return {
     id: raw.id,
     name: raw.name,

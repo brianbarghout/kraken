@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { createGame, spawnDefenderAt, GameState } from '../src/game';
+import { spawnDefenderAt, GameState } from '../src/game';
+import { createGameFromFiles } from '../src/node';
 import { resolveTurn, checkOutcome } from '../src/turn';
 import { applySystemDamage, WEAPON_SYSTEMS } from '../src/kraken';
 import { axial, hexDistance, offsetToAxial } from '../src/hex';
@@ -7,7 +8,7 @@ import { axial, hexDistance, offsetToAxial } from '../src/hex';
 const at = offsetToAxial;
 
 function newGame(seed = 42): GameState {
-  return createGame({ mapId: 'map01', seed });
+  return createGameFromFiles({ mapId: 'map01', seed });
 }
 
 describe('WeGo phase order (GDD §8.1)', () => {
@@ -319,7 +320,7 @@ describe('win conditions (GDD §3)', () => {
 
 describe('determinism & event log (GDD §13.8)', () => {
   function playScript(seed: number): string {
-    const g = createGame({ mapId: 'map01', seed });
+    const g = createGameFromFiles({ mapId: 'map01', seed });
     const tank = spawnDefenderAt(g, 'heavyTank', 'f1', at(38, 12));
     const arty = spawnDefenderAt(g, 'artillery', 'f2', at(38, 10));
     resolveTurn(g, {

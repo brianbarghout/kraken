@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { loadMap, terrainAt, stepCostFor, inBounds } from '../src/map';
+import { terrainAt, stepCostFor, inBounds } from '../src/map';
+import { loadMap } from '../src/node';
 import { axial, hexDistance, offsetToAxial, aStar } from '../src/hex';
 
 const map = loadMap('map01');

@@ -7,7 +7,8 @@
  *   npm run sim -- --log out.json  also dump the full JSON event log
  */
 import { writeFileSync } from 'node:fs';
-import { createGame, DefenderOrder, GameState, KrakenFireOrder, spawnDefenderAt } from '../engine/src/game';
+import { DefenderOrder, GameState, KrakenFireOrder, spawnDefenderAt } from '../engine/src/game';
+import { createGameFromFiles } from '../engine/src/node';
 import { checkOutcome, resolveTurn } from '../engine/src/turn';
 import { axialToOffset, hexDistance, hexNeighbors, hexRange, offsetToAxial } from '../engine/src/hex';
 import { hasLineOfSight } from '../engine/src/los';
@@ -34,7 +35,7 @@ const seed = Number(arg('seed') ?? Math.floor(Math.random() * 1_000_000));
 const mapId = arg('map') ?? 'map01';
 const logPath = arg('log');
 
-const g = createGame({ mapId, seed });
+const g = createGameFromFiles({ mapId, seed });
 const ordersRng = createRng(seed ^ 0x5eed);
 
 // standard defending force on the map's spawn hexes

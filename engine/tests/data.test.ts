@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { loadUnitData } from '../src/data';
+import { loadUnitData } from '../src/node';
 
 const data = loadUnitData();
 

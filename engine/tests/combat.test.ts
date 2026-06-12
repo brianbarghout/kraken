@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createRng } from '../src/rng';
-import { loadUnitData } from '../src/data';
+import { loadUnitData } from '../src/node';
 import { resolveAttack } from '../src/combat';
 import { createDefender, defenderAttack, defenderSpeed, applyDamageToDefender } from '../src/units';
 import { axial } from '../src/hex';
