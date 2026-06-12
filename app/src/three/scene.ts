@@ -326,7 +326,8 @@ export class TacticalScene {
     dish.position.y = 0.4;
     mast.add(dish);
     this.part('smokeDispensers', new THREE.BoxGeometry(0.5, 0.18, 0.22), STATE_COLOR.green, 0, 1.1, 1.28, g);
-    g.scale.setScalar(1.3); // it should loom over everything on the field
+    // ~1.3 hex visual footprint (P2.1): slight overhang, no neighbour occlusion
+    g.scale.setScalar(0.75);
     g.rotation.y = Math.PI / 2; // face west, toward the Command Post
     this.kraken = g;
     this.scene.add(g);
@@ -352,6 +353,7 @@ export class TacticalScene {
     this.modelsReady = true;
     for (const [, mesh] of this.defenderMeshes) this.scene.remove(mesh);
     this.defenderMeshes.clear();
+    this.clearGhosts();
     this.scene.remove(this.cpGroup);
     this.buildCommandPost();
     if (this.lastSnapshot) this.update(this.lastSnapshot);
@@ -368,25 +370,25 @@ export class TacticalScene {
     };
     switch (unit.type) {
       case 'heavyTank':
-        add('heavyTankBase', 1.0);
-        add('turret', 0.55, { y: 0.5, lerp: 0.4 });
+        add('heavyTankBase', 1.15);
+        add('turret', 0.62, { y: 0.56, lerp: 0.4 });
         break;
       case 'lightTank':
-        add('lightTankBase', 0.78);
-        add('turret', 0.4, { y: 0.42, lerp: 0.4 });
+        add('lightTankBase', 0.9);
+        add('turret', 0.46, { y: 0.48, lerp: 0.4 });
         break;
       case 'gev':
-        add('gev', 0.85).position.y = 0.22; // it hovers
+        add('gev', 0.98).position.y = 0.22; // it hovers
         break;
       case 'artillery': {
-        add('artilleryBase', 1.05);
-        const gun = add('cannon', 0.6, { y: 0.34, lerp: 0.35 });
-        gun.position.z = 0.18;
+        add('artilleryBase', 1.2);
+        const gun = add('cannon', 0.68, { y: 0.38, lerp: 0.35 });
+        gun.position.z = 0.2;
         gun.rotation.x = -0.25;
         break;
       }
       case 'scoutBike':
-        add('scout', 0.5, { lerp: 0.45 });
+        add('scout', 0.6, { lerp: 0.45 });
         break;
     }
     g.traverse((o) => (o.userData.unitId = unit.id));
@@ -1017,6 +1019,80 @@ export class TacticalScene {
     this.lookTarget.copy(this.kraken.position);
   }
 
+  // ------------------------------------------------- x-ray ghosts (P2.2)
+
+  private xrayGhosts = new Map<string, THREE.Group>();
+
+  /** Translucent always-on-top copy shown when the Kraken occludes a unit. */
+  private makeGhost(source: THREE.Object3D, color: number): THREE.Group {
+    const ghost = source.clone(true);
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.4,
+      depthTest: false,
+      depthWrite: false,
+    });
+    ghost.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.material = mat;
+        o.renderOrder = 999;
+      }
+      o.raycast = () => {};
+    });
+    ghost.visible = false;
+    const group = new THREE.Group();
+    group.add(ghost);
+    group.visible = false;
+    this.scene.add(group);
+    return group;
+  }
+
+  private clearGhosts(): void {
+    for (const [, g] of this.xrayGhosts) this.scene.remove(g);
+    this.xrayGhosts.clear();
+  }
+
+  /** Per-frame: any unit (or the CP) hidden behind the Kraken shows its ghost. */
+  private updateXray(): void {
+    const camPos = this.camera.position;
+    const check = (id: string, target: THREE.Object3D, color: number) => {
+      let ghost = this.xrayGhosts.get(id);
+      if (!ghost) {
+        ghost = this.makeGhost(target, color);
+        this.xrayGhosts.set(id, ghost);
+      }
+      if (!target.visible) {
+        ghost.visible = false;
+        return;
+      }
+      const tp = target.position.clone().add(new THREE.Vector3(0, 0.35, 0));
+      this.raycaster.set(camPos, tp.clone().sub(camPos).normalize());
+      const hits = this.raycaster.intersectObject(this.kraken, true);
+      const dist = camPos.distanceTo(tp);
+      const occluded = hits.some((h) => h.distance < dist - 0.15);
+      ghost.visible = occluded;
+      if (occluded) {
+        ghost.position.copy(target.position);
+        ghost.rotation.copy(target.rotation);
+        const inner = ghost.children[0]!;
+        inner.visible = true;
+      }
+    };
+    for (const [id, mesh] of this.defenderMeshes) {
+      const snap = this.lastSnapshot?.defenders.find((u) => u.id === id);
+      check(id, mesh, snap ? DEFENDER_COLOR[snap.type] : 0xffffff);
+    }
+    check('cp', this.cpGroup, 0x6fb9e8);
+  }
+
+  /** Test harness: how many occlusion ghosts are currently showing. */
+  xrayVisibleCount(): number {
+    let n = 0;
+    for (const [, g] of this.xrayGhosts) if (g.visible) n++;
+    return n;
+  }
+
   /** CSS-pixel screen position of a unit — used by the headless test harness. */
   screenPositionOfUnit(unitId: string): { x: number; y: number } | null {
     const mesh = this.defenderMeshes.get(unitId);
@@ -1075,9 +1151,15 @@ export class TacticalScene {
       r.rotation.y = Math.sin(now * 0.8 + i) * 0.1;
     });
 
+    this.updateXray();
+
+    // P2.3: steep pitch when zoomed out (readable board, minimal occlusion),
+    // easing shallower when zoomed in (cinematic; x-ray ghosts cover occlusion)
+    const zoomT = THREE.MathUtils.clamp((this.camDist - 7) / (60 - 7), 0, 1);
+    const zMul = THREE.MathUtils.lerp(1.0, 0.62, zoomT);
     const cam = this.lookTarget
       .clone()
-      .add(new THREE.Vector3(0, this.camDist, this.camDist * 0.75));
+      .add(new THREE.Vector3(0, this.camDist, this.camDist * zMul));
     this.camera.position.lerp(cam, 0.18);
     this.camera.lookAt(this.lookTarget);
     this.renderer.render(this.scene, this.camera);

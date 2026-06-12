@@ -117,6 +117,33 @@ await run('desktop-targeting', { width: 1280, height: 800 }, async (page) => {
   await page.waitForTimeout(900);
 });
 
+// P2.2: a unit hidden behind the Kraken must show an x-ray ghost
+await run('desktop-xray', { width: 1280, height: 800 }, async (page) => {
+  await page.goto(base + '?dev=1', { waitUntil: 'networkidle' });
+  await page.getByText('Begin Assault').click();
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => {
+    const { controller, bump } = window.__kraken;
+    const k = controller.state.krakenPosition;
+    const scout = controller.state.defenders.find((u) => u.type === 'scoutBike');
+    scout.position = { q: k.q, r: k.r - 1 }; // directly behind, camera-relative
+    bump();
+  });
+  await page.waitForTimeout(800);
+  await page.mouse.move(640, 360);
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -300); // zoom right in
+  await page.waitForTimeout(1200); // camera lerp settles at the shallow pitch
+  // P2.1 rescale makes natural occlusion near-impossible (D40) — verify both:
+  const natural = await page.evaluate(() => window.__kraken.sceneRef.current.xrayVisibleCount());
+  if (natural !== 0) throw new Error(`unit occluded at proper scale (${natural} ghosts) — rescale regressed`);
+  // ...and that the ghost mechanism fires when occlusion does happen
+  await page.evaluate(() => window.__kraken.sceneRef.current['kraken'].scale.setScalar(3));
+  await page.waitForTimeout(400);
+  const forced = await page.evaluate(() => window.__kraken.sceneRef.current.xrayVisibleCount());
+  await page.evaluate(() => window.__kraken.sceneRef.current['kraken'].scale.setScalar(0.75));
+  if (forced < 1) throw new Error(`x-ray ghost did not appear under forced occlusion`);
+});
+
 await browser.close();
 if (errors.length > 0) {
   console.error('SMOKE FAILURES:');
