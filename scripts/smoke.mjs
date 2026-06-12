@@ -173,6 +173,41 @@ await run('desktop-overrun', { width: 1280, height: 800 }, async (page) => {
   if (!crushed) throw new Error('overrun event missing after driving through a scout');
 });
 
+// P5 audio: first user gesture unlocks the context; first END TURN plays
+// P4/P1 long-session: repeated arm/lock/turn cycles stay healthy
+await run('desktop-session', { width: 1280, height: 800 }, async (page) => {
+  await page.goto(base + '?dev=1', { waitUntil: 'networkidle' });
+  await page.getByText('Begin Assault').click();
+  await page.waitForTimeout(1200);
+  for (let turn = 0; turn < 5; turn++) {
+    await page.evaluate(() => {
+      const { controller, bump } = window.__kraken;
+      const k = controller.state.krakenPosition;
+      const alive = controller.state.defenders;
+      if (alive[0]) alive[0].position = { q: k.q - 2, r: k.r };
+      if (alive[1]) alive[1].position = { q: k.q - 3, r: k.r + 1 };
+      controller.setMoveTarget({ q: k.q - 1, r: k.r });
+      bump();
+    });
+    await page.getByRole('button', { name: 'Main', exact: true }).click();
+    await page.waitForTimeout(250);
+    await page.evaluate(() => {
+      const { controller, bump } = window.__kraken;
+      const alive = controller.state.defenders;
+      if (alive[0]) controller.queueFire({ weapon: 'mainBattery', targetUnitId: alive[0].id });
+      if (alive[1]) controller.queueFire({ weapon: 'secondary1', targetUnitId: alive[1].id });
+      bump();
+    });
+    await page.getByText('End Turn').click();
+    await page.waitForTimeout(600);
+    await page.mouse.click(640, 300); // skip playback
+    await page.waitForTimeout(400);
+  }
+  const audio = await page.evaluate(() => window.__kraken.sound.debugInfo);
+  if (audio.ctxState !== 'running') throw new Error(`audio context not running: ${audio.ctxState}`);
+  if (audio.buffersLoaded < 10) throw new Error(`audio buffers missing: ${audio.buffersLoaded}/12`);
+});
+
 await browser.close();
 if (errors.length > 0) {
   console.error('SMOKE FAILURES:');

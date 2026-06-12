@@ -263,6 +263,7 @@ function defenderDirectFire(state: GameState, order: DefenderOrder, unit: Defend
   if (dist > stats.range) {
     emit(state, phase, 'targetEvaded', {
       attackerId: unit.id,
+      attackerType: unit.type,
       target: 'kraken',
       reason: 'out of range',
     });
@@ -271,6 +272,7 @@ function defenderDirectFire(state: GameState, order: DefenderOrder, unit: Defend
   if (!hasLineOfSight(state.map, unit.position, state.krakenPosition)) {
     emit(state, phase, 'targetEvaded', {
       attackerId: unit.id,
+      attackerType: unit.type,
       target: 'kraken',
       reason: 'no line of sight',
     });
@@ -418,6 +420,7 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
             attackerId: 'kraken',
             weapon: fire.weapon,
             targetId: fire.targetUnitId,
+            targetType: defenderById(state, fire.targetUnitId)?.type,
             reason: err,
           });
         } else {
@@ -432,6 +435,7 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
         attackerId: 'kraken',
         weapon: fire.weapon,
         targetId: target.id,
+        targetType: target.type,
         attack,
         armour,
         result,

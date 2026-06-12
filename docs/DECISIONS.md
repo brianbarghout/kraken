@@ -196,3 +196,39 @@ retuning never requires code changes.
   they have content (MOVEMENT/COMBAT/ARTILLERY/REPAIR), ~0.7 s each,
   tap anywhere on the battlefield to skip. Phase labels double as the
   §8.1 teaching device.
+
+## Phase 1.2 (feel & fixes) decisions
+
+**Design principle (from the brief): every committed order must pay off
+audiovisually at resolution — the ticker is the receipt, not the
+experience.**
+
+- **D40 — Dead-click root cause + occlusion strategy.** The dead-click
+  class was informational overlays (hint bar, turn banner, mini-map)
+  swallowing battlefield clicks — all overlays are now pointer-
+  transparent and the regression harness fails on any ringed-target
+  click that yields neither a lock nor explicit feedback. The Kraken
+  rescale (~1.3 hex footprint) eliminated natural occlusion at standard
+  pitch; camera pitch eases 58°→45° with zoom; x-ray ghosts remain as
+  the safety net and are verified under forced occlusion.
+- **D41 — Overrun (GDD addition).** Kraken-only; soft/hard split is
+  data-driven by armour (`overrun.hardArmourThreshold` = 2 — so
+  artillery, unlisted in the brief, counts as soft: armour 1 crew
+  vehicles do not stop 200 tonnes). Tanks block while alive (50/50
+  damage roll, damaged tank dies to a second pass) and each tank
+  overrun risks one tread step at `treadRiskChance` (1/3). Balance vs
+  D27: the tread risk is the regulator on an already-dominant Kraken —
+  tune it first. Tier 2 AI avoidance hook documented in ai.ts.
+- **D42 — Wrecks and scorches are cosmetic only.** Scorch marks persist
+  ~7 turns and never affect movement or LOS. Damaged (amber) units
+  trail persistent smoke until repaired or dead.
+- **D43 — Sound.** Kenney CC0 samples for weapon voices/impacts
+  (ASSETS.md); tread rumble and wind ambience are synthesized brown
+  noise (zero download). Audio unlocks on the first user gesture per
+  browser autoplay rules; mute is a per-session toggle (no storage,
+  §17). Tap-to-skip cancels scheduled audio with the visuals.
+- **D44 — Abandon game.** Solo semantics: confirm-tap, then straight
+  back to the start screen, game state discarded. Phase 3 open design
+  question: mid-match quit in multiplayer (forfeit? AI takeover of the
+  fleet? Kraken quit = defenders win?) — must be decided with the lobby
+  design.

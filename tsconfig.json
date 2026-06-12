@@ -12,5 +12,6 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["engine/**/*.ts", "cli/**/*.ts", "app/tests/**/*.ts", "app/src/game/**/*.ts"]
+  "include": ["engine/**/*.ts", "cli/**/*.ts", "app/tests/**/*.ts", "app/src/game/**/*.ts"],
+  "exclude": ["app/src/game/sound.ts"]
 }

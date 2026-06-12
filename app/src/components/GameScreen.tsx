@@ -5,6 +5,7 @@ import { krakenSensorRange } from '../../../engine/src/kraken';
 import { isMissile, validKrakenTargets, weaponEnvelope } from '../../../engine/src/targeting';
 import { detectedDefenders, krakenVisibleHexKeys } from '../../../engine/src/visibility';
 import { SoloController } from '../game/controller';
+import { SoundPlayer } from '../game/sound';
 import { WEAPON_META, weaponStats } from '../game/weaponMeta';
 import { LockedTarget, PickResult, SceneSnapshot, TacticalScene } from '../three/scene';
 import { TacticalView } from '../three/TacticalView';
@@ -25,9 +26,11 @@ function blockedMessage(reason: string): string {
 export function GameScreen({
   controller,
   onGameOver,
+  onAbandon,
 }: {
   controller: SoloController;
   onGameOver: () => void;
+  onAbandon: () => void;
 }) {
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
@@ -40,7 +43,12 @@ export function GameScreen({
   // dev/test seam: ?dev=1 exposes the controller + scene for the headless smoke test
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('dev')) {
-      (window as unknown as Record<string, unknown>).__kraken = { controller, bump, sceneRef };
+      (window as unknown as Record<string, unknown>).__kraken = {
+        controller,
+        bump,
+        sceneRef,
+        sound: soundRef.current,
+      };
     }
   }, [controller, bump]);
 
@@ -88,12 +96,24 @@ export function GameScreen({
         mode !== 'move' && !busy && !isMissile(mode) && sensors < weaponStats(s.data, mode).range
           ? (sensors + 0.5) * 1.62
           : null,
+      sensorRingRadius: (sensors + 0.5) * 1.62,
+      turn: s.turn,
       lockedTargets,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controller, mode, busy, tick, controller.state.turn, controller.movePlan]);
 
   const firstHints = useRef({ arm: false, missile: false, damage: false });
+  const soundRef = useRef<SoundPlayer | null>(null);
+  if (!soundRef.current) soundRef.current = new SoundPlayer();
+  const [muted, setMutedState] = useState(false);
+
+  // browser autoplay rules: unlock audio on the first user gesture
+  useEffect(() => {
+    const unlock = () => soundRef.current!.unlock();
+    window.addEventListener('pointerdown', unlock, { once: true });
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
 
   const armWeapon = useCallback(
     (m: InputMode) => {
@@ -193,7 +213,13 @@ export function GameScreen({
   return (
     <div className="game-root">
       <div className="view-area">
-        <TacticalView map={controller.state.map} snapshot={snapshot} onPick={onPick} sceneRef={sceneRef} />
+        <TacticalView
+          map={controller.state.map}
+          snapshot={snapshot}
+          onPick={onPick}
+          sceneRef={sceneRef}
+          sound={soundRef.current}
+        />
         <MiniMap map={controller.state.map} krakenPos={controller.state.krakenPosition} />
         <div className="turn-banner">
           Turn {controller.state.turn + 1}
@@ -229,6 +255,13 @@ export function GameScreen({
           setMode={armWeapon}
           onEndTurn={endTurn}
           busy={busy}
+          muted={muted}
+          onToggleMute={() => {
+            const next = !muted;
+            setMutedState(next);
+            soundRef.current!.setMuted(next);
+          }}
+          onAbandon={onAbandon}
         />
       </div>
     </div>
@@ -282,8 +315,8 @@ function describeEvents(events: GameEvent[]): { text: string; tone: string }[] {
         lines.push({
           text:
             e.attackerId === 'kraken'
-              ? `${String(e.targetId)} evaded your ${String(e.weapon)} (${String(e.reason)})`
-              : `You evaded ${String(e.attackerId)} (${String(e.reason)})`,
+              ? `${String(e.targetType ?? '')} ${String(e.targetId)} evaded your ${String(e.weapon)} (${String(e.reason)})`
+              : `You evaded ${String(e.attackerType ?? '')} ${String(e.attackerId)} (${String(e.reason)})`,
           tone: e.attackerId === 'kraken' ? 'bad' : 'good',
         });
         break;

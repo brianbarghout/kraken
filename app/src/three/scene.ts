@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SoundPlayer, weaponVoice } from '../game/sound';
 import { SystemState, TerrainId } from '../../../engine/src/data';
 import { GameEvent } from '../../../engine/src/game';
 import { Axial, axialToOffset, hexKey, offsetToAxial, parseHexKey as parseKey } from '../../../engine/src/hex';
@@ -134,11 +135,15 @@ export interface SceneSnapshot {
   highlightUnitIds: Set<string>;
   highlightCp: boolean;
   cpState: string;
+  /** current turn — drives cosmetic persistence (scorch marks, D42) */
+  turn: number;
   /** armed-weapon targeting picture: hexKey -> 'valid' | 'losBlocked' | 'outOfSensors' */
   envelope: Map<string, string> | null;
   envelopeColor: number;
   /** world-space radius of the sensor horizon ring, when tighter than weapon range */
   sensorHorizonRadius: number | null;
+  /** always-on sensor bubble radius (P6.2) — the fog boundary made explicit */
+  sensorRingRadius: number;
   lockedTargets: LockedTarget[];
 }
 
@@ -190,6 +195,7 @@ export class TacticalScene {
   private fpsSamples: number[] = [];
 
   onPick: ((pick: PickResult) => void) | null = null;
+  sound: SoundPlayer | null = null;
 
   constructor(canvas: HTMLCanvasElement, map: GameMap) {
     this.map = map;
@@ -533,6 +539,77 @@ export class TacticalScene {
     this.updateSmoke(snap);
     this.updateEnvelope(snap);
     this.updateLocks(snap);
+    this.updateDamageSmoke(snap);
+    this.pruneScorches(snap.turn);
+  }
+
+  // -------------------------------------------- persistent battle scars (P4)
+
+  private scorches: { mesh: THREE.Mesh; expiresTurn: number }[] = [];
+  private damageSmokeMeshes = new Map<string, THREE.Group>();
+
+  /** Cosmetic only — never blocks movement or LOS (D42). */
+  addScorch(hex: Axial, expiresTurn: number): void {
+    const mesh = new THREE.Mesh(
+      new THREE.CircleGeometry(0.55, 12),
+      new THREE.MeshBasicMaterial({ color: 0x141414, transparent: true, opacity: 0.7 }),
+    );
+    const p = hexToWorld(hex);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(p.x + (Math.random() - 0.5) * 0.2, this.groundHeight(hex) + 0.04, p.z);
+    mesh.raycast = () => {};
+    this.scene.add(mesh);
+    this.scorches.push({ mesh, expiresTurn });
+  }
+
+  private pruneScorches(turn: number): void {
+    this.scorches = this.scorches.filter((s) => {
+      if (s.expiresTurn <= turn) {
+        this.scene.remove(s.mesh);
+        s.mesh.geometry.dispose();
+        return false;
+      }
+      return true;
+    });
+  }
+
+  /** Damaged (amber) units trail smoke until repaired or dead. */
+  private updateDamageSmoke(snap: SceneSnapshot): void {
+    const keep = new Set<string>();
+    for (const u of snap.defenders) {
+      if (u.state !== 'amber') continue;
+      keep.add(u.id);
+      let g = this.damageSmokeMeshes.get(u.id);
+      if (!g) {
+        g = new THREE.Group();
+        const mat = new THREE.MeshBasicMaterial({ color: 0x444a47, transparent: true, opacity: 0.5 });
+        for (let i = 0; i < 3; i++) {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.12 + i * 0.05, 6, 5), mat);
+          puff.position.y = 0.55 + i * 0.28;
+          puff.raycast = () => {};
+          g.add(puff);
+        }
+        this.scene.add(g);
+        this.damageSmokeMeshes.set(u.id, g);
+      }
+      const p = hexToWorld(u.position);
+      g.position.set(p.x + 0.15, this.groundHeight(u.position), p.z);
+    }
+    for (const [id, g] of this.damageSmokeMeshes) {
+      if (!keep.has(id)) {
+        this.scene.remove(g);
+        this.damageSmokeMeshes.delete(id);
+      }
+    }
+  }
+
+  // ---------------------------------------------------- screen shake (P4.5)
+
+  private shakeAmp = 0;
+
+  /** Phone-safe: capped amplitude, fast exponential decay. */
+  shake(intensity: number): void {
+    this.shakeAmp = Math.min(0.7, this.shakeAmp + intensity);
   }
 
   /** P2: range band + sensor horizon + LOS shadows for the armed weapon. */
@@ -568,21 +645,26 @@ export class TacticalScene {
         this.envelopeGroup.add(mesh);
       }
     }
-    if (snap.sensorHorizonRadius !== null) {
+    const addRing = (radius: number, color: number, opacity: number, y: number) => {
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i <= 48; i++) {
         const a = (i / 48) * Math.PI * 2;
-        pts.push(new THREE.Vector3(Math.cos(a) * snap.sensorHorizonRadius, 0.5, Math.sin(a) * snap.sensorHorizonRadius));
+        pts.push(new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius));
       }
       const ring = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(pts),
-        new THREE.LineBasicMaterial({ color: 0xbfd3df, transparent: true, opacity: 0.35 }),
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity }),
       );
       const kp = hexToWorld(snap.krakenPos);
       ring.position.set(kp.x, 0, kp.z);
       ring.raycast = () => {};
       this.envelopeGroup.add(ring);
+    };
+    if (snap.sensorHorizonRadius !== null) {
+      addRing(snap.sensorHorizonRadius, 0xbfd3df, 0.35, 0.5);
     }
+    // P6.2 — the sensor bubble is always readable off the terrain
+    addRing(snap.sensorRingRadius, 0x59d68b, 0.16, 0.3);
   }
 
   /** P1: pulsing corner-bracket reticles + targeting lines for locked targets. */
@@ -726,6 +808,7 @@ export class TacticalScene {
     // take the resolver first — finishing animations can re-enter here
     const resolve = this.playbackResolve;
     this.playbackResolve = null;
+    this.sound?.cancelScheduled();
     for (const anim of this.animations) {
       anim.update(1);
       const done = anim.done;
@@ -783,6 +866,25 @@ export class TacticalScene {
         clock += 450;
       }
 
+      // converging salvo pre-pass (P4.3): kraken shots grouped by target
+      const salvoOf = new Map<GameEvent, { time: number; size: number }>();
+      {
+        const groups = new Map<string, GameEvent[]>();
+        for (const e of events) {
+          if (e.type !== 'attackResolved' || e.attackerId !== 'kraken') continue;
+          const key = (e.targetId as string) ?? (e.target as string) ?? 'x';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key)!.push(e);
+        }
+        let slot = 0;
+        for (const [, members] of groups) {
+          const time = tCombat + slot * 200;
+          for (const m of members) salvoOf.set(m, { time, size: members.length });
+          slot++;
+        }
+      }
+      let defSlot = 0;
+
       for (const e of events) {
         switch (e.type) {
           case 'krakenMoved': {
@@ -802,13 +904,31 @@ export class TacticalScene {
               },
             });
             trackPos('kraken', e.to as Axial);
+            this.sound?.rumble(700, tMove);
             break;
           }
           case 'unitMoved':
           case 'unitScooted':
             trackPos(e.unitId as string, e.to as Axial);
             break;
+          case 'overrun': {
+            // the machine drives through; the victim is crushed (P4.4)
+            const hex = e.hex as Axial;
+            this.crushVictim(e.unitId as string, hex, tMove + 250);
+            if (e.result === 'killed') {
+              this.explosion(hex, tMove + 350, 1.1);
+              this.addScorch(hex, (this.lastSnapshot?.turn ?? 0) + 7);
+              this.animations.push({ delay: tMove + 350, duration: 1, update: () => this.shake(0.3) });
+              this.sound?.play('crunch', tMove + 300);
+            } else {
+              this.flash(hex, tMove + 300, 0xffd089);
+              this.sound?.play('crunch', tMove + 300);
+            }
+            break;
+          }
           case 'attackResolved': {
+            const salvo = salvoOf.get(e);
+            const when = salvo ? salvo.time : tCombat + 120 + ++defSlot * 140;
             const fromHex = pos.get((e.attackerId as string) ?? '') ?? null;
             const targetHex =
               e.target === 'commandPost'
@@ -816,23 +936,50 @@ export class TacticalScene {
                 : e.targetSystem !== undefined
                   ? pos.get('kraken')!
                   : (pos.get(e.targetId as string) ?? null);
-            if (fromHex && targetHex) this.tracer(fromHex, targetHex, tCombat);
-            if (targetHex && e.result !== 'ping') this.flash(targetHex, tCombat + 180, 0xffa040);
+            if (e.attackerId === 'kraken') {
+              this.muzzleFlash(e.weapon as string, when);
+              this.sound?.play(weaponVoice(e.weapon as string), when);
+            } else if (fromHex) {
+              this.sound?.play('shot-defender', when);
+            }
+            if (fromHex && targetHex) this.tracer(fromHex, targetHex, when);
+            if (targetHex) {
+              this.impactFx(targetHex, e.result as string, when + 200, salvo?.size ?? 1);
+              if (e.targetSystem !== undefined && (e.result === 'damage' || e.result === 'kill')) {
+                this.animations.push({ delay: when + 200, duration: 1, update: () => this.shake(0.3) });
+              }
+            }
+            break;
+          }
+          case 'targetEvaded': {
+            // the shot goes somewhere — show a wild tracer into empty ground
+            const fromHex = pos.get((e.attackerId as string) ?? '');
+            if (fromHex && e.attackerId === 'kraken') this.muzzleFlash(e.weapon as string, tCombat);
             break;
           }
           case 'shellFired': {
             const from = pos.get(e.attackerId as string);
-            if (from) this.launchPuff(from, tCombat);
+            if (from) {
+              this.launchPuff(from, tCombat);
+              this.sound?.play(e.attackerId === 'kraken' ? 'missile-launch' : 'artillery-fire', tCombat);
+            }
             break;
           }
           case 'shellLanded': {
             this.shellDrop(e.impact as Axial, tShell);
-            this.explosion(e.impact as Axial, tShell + 420, 1.2);
+            this.sound?.play('shell-incoming', tShell + 60);
+            this.explosion(e.impact as Axial, tShell + 420, 1.5);
+            this.addScorch(e.impact as Axial, (this.lastSnapshot?.turn ?? 0) + 7);
+            this.sound?.play('explosion-big', tShell + 420);
+            this.animations.push({ delay: tShell + 430, duration: 1, update: () => this.shake(0.35) });
             break;
           }
           case 'unitDestroyed': {
             const at = pos.get(e.unitId as string);
-            if (at) this.explosion(at, tShell + 200, 1.6);
+            if (at) {
+              this.explosion(at, tShell + 200, 1.6);
+              this.addScorch(at, (this.lastSnapshot?.turn ?? 0) + 7);
+            }
             break;
           }
           default:
@@ -847,6 +994,76 @@ export class TacticalScene {
         update: () => {},
         done: () => this.skipPlayback(), // natural end uses the same resolve path
       });
+    });
+  }
+
+  /** Result-scaled impact (P4.2): ping = spark, damage = blast, kill = execution. */
+  private impactFx(hex: Axial, result: string, when: number, salvoSize: number): void {
+    const scale = 1 + (salvoSize - 1) * 0.5;
+    if (result === 'ping') {
+      this.flash(hex, when, 0xfff6d8);
+      this.sound?.play('ricochet', when);
+    } else if (result === 'noEffect') {
+      this.flash(hex, when, 0xc8b890);
+    } else if (result === 'damage') {
+      this.explosion(hex, when, 0.9 * scale);
+      this.sound?.play('explosion-small', when);
+    } else if (result === 'kill') {
+      this.explosion(hex, when, 1.6 * scale);
+      this.addScorch(hex, (this.lastSnapshot?.turn ?? 0) + 7);
+      this.sound?.play(salvoSize > 1 ? 'explosion-big' : 'explosion-med', when);
+      this.animations.push({
+        delay: when,
+        duration: 1,
+        update: () => this.shake(salvoSize > 1 ? 0.55 : 0.4),
+      });
+    }
+  }
+
+  /** Flash at the firing weapon's mount on the Kraken (P4.1). */
+  private muzzleFlash(weapon: string, when: number): void {
+    const part = this.krakenParts.get(weapon);
+    if (!part) return;
+    const flash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c0, transparent: true, opacity: 0.95 }),
+    );
+    flash.visible = false;
+    flash.raycast = () => {};
+    this.fxGroup.add(flash);
+    this.animations.push({
+      delay: when,
+      duration: 180,
+      update: (t) => {
+        flash.visible = true;
+        part.getWorldPosition(flash.position); // kraken may still be rolling
+        flash.scale.setScalar(1 + t * 1.4);
+        (flash.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - t);
+      },
+      done: () => this.fxGroup.remove(flash),
+    });
+  }
+
+  /** Overrun beat (P4.4): the victim is flattened under the treads with debris. */
+  private crushVictim(unitId: string, hex: Axial, when: number): void {
+    const source = this.defenderMeshes.get(unitId);
+    if (!source) return;
+    const dummy = source.clone(true);
+    dummy.visible = false;
+    dummy.traverse((o) => (o.raycast = () => {}));
+    const p = hexToWorld(hex);
+    dummy.position.set(p.x, this.groundHeight(hex), p.z);
+    this.fxGroup.add(dummy);
+    this.animations.push({
+      delay: when,
+      duration: 420,
+      update: (t) => {
+        dummy.visible = true;
+        dummy.scale.y = Math.max(0.06, 1 - t);
+        dummy.scale.x = 1 + t * 0.35;
+        dummy.scale.z = 1 + t * 0.35;
+      },
+      done: () => this.fxGroup.remove(dummy),
     });
   }
 
@@ -1186,6 +1403,11 @@ export class TacticalScene {
       .add(new THREE.Vector3(0, this.camDist, this.camDist * zMul));
     this.camera.position.lerp(cam, 0.18);
     this.camera.lookAt(this.lookTarget);
+    if (this.shakeAmp > 0.01) {
+      this.camera.position.x += (Math.random() - 0.5) * this.shakeAmp * 0.4;
+      this.camera.position.y += (Math.random() - 0.5) * this.shakeAmp * 0.25;
+      this.shakeAmp *= Math.exp(-dt / 130);
+    }
     this.renderer.render(this.scene, this.camera);
   };
 

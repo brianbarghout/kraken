@@ -140,6 +140,7 @@ describe('combat phase — direct fire', () => {
     const evade = g.events.find((e) => e.type === 'targetEvaded' && e.attackerId === 'kraken');
     expect(evade).toBeDefined();
     expect(evade!.targetId).toBe(u.id);
+    expect(evade!.targetType).toBe('gev'); // ticker needs the type (P6.3)
     expect(evade!.weapon).toBe('antiPersonnel1');
   });
 

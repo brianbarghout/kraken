@@ -45,6 +45,18 @@ Downloaded 2026-06-12 from fonts.gstatic.com via the css2 API; served
 from `/fonts/`, declared in `app/src/styles.css`. No runtime Google
 requests — the build is fully self-contained.
 
+## Audio (Phase 1.2, CC0)
+
+Samples in `app/public/assets/audio/` (~475 KB total, mono-friendly):
+
+| Pack | URL | Version (zip hash) | Files used |
+|---|---|---|---|
+| Sci-Fi Sounds | https://kenney.nl/assets/sci-fi-sounds | 6b296f9ecf-1677589334 | lowFrequency_explosion_000/001, laserLarge_001, laserSmall_000, laserRetro_000, thrusterFire_000, forceField_000, explosionCrunch_000/002/004 |
+| Impact Sounds | https://kenney.nl/assets/impact-sounds | 87b4ddecda-1677589768 | impactMetal_light_000, impactMetal_heavy_004, impactPlate_heavy_000 |
+
+Voice mapping lives in `app/src/game/sound.ts`. Tread rumble and wind
+ambience are **synthesized** (brown noise through filters) — no files.
+
 ## Other
 
 - `app/public/favicon.svg` — original, drawn in-line (hex + blip motif).

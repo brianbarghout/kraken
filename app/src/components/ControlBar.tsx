@@ -11,19 +11,42 @@ export function ControlBar({
   setMode,
   onEndTurn,
   busy,
+  muted,
+  onToggleMute,
+  onAbandon,
 }: {
   controller: SoloController;
   mode: InputMode;
   setMode: (m: InputMode) => void;
   onEndTurn: () => void;
   busy: boolean;
+  muted: boolean;
+  onToggleMute: () => void;
+  onAbandon: () => void;
 }) {
   const { state, pending } = controller;
   const [tooltip, setTooltip] = useState<KrakenWeaponId | null>(null);
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
   const smokeReady =
     state.kraken.smokeCooldown === 0 && state.kraken.systems.smokeDispensers !== 'dark';
   return (
     <>
+      <button
+        className={confirmAbandon ? 'danger' : ''}
+        title="Abandon game"
+        onClick={() => {
+          if (confirmAbandon) onAbandon();
+          else {
+            setConfirmAbandon(true);
+            setTimeout(() => setConfirmAbandon(false), 2500);
+          }
+        }}
+      >
+        {confirmAbandon ? 'Sure?' : '✕'}
+      </button>
+      <button title={muted ? 'Unmute' : 'Mute'} onClick={onToggleMute}>
+        {muted ? '🔇' : '🔊'}
+      </button>
       <button
         className={mode === 'move' ? 'primary' : ''}
         disabled={busy}

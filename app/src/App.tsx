@@ -33,7 +33,7 @@ export function App() {
   }, []);
 
   if (screen === 'game' && controller) {
-    return <GameScreen controller={controller} onGameOver={onGameOver} />;
+    return <GameScreen controller={controller} onGameOver={onGameOver} onAbandon={backToStart} />;
   }
   if (screen === 'summary' && controller) {
     return <SummaryScreen controller={controller} onRestart={backToStart} />;
