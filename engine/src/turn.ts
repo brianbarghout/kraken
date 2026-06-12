@@ -66,24 +66,29 @@ function moveUnit(
 ): { to: Axial; mpSpent: number } | { rejected: string } {
   if (!inBounds(state.map, destination)) return { rejected: 'destination out of bounds' };
   const blocked = blockedHexes(state, moverId);
-  if (blocked.has(hexKey(destination))) return { rejected: 'destination occupied' };
+  // an occupied destination can still be approached — path to it, stop short
+  const destinationOccupied = blocked.has(hexKey(destination));
   const result = aStar(from, destination, (a, b) => {
-    if (!inBounds(state.map, b) || blocked.has(hexKey(b))) return null;
+    if (!inBounds(state.map, b)) return null;
+    if (blocked.has(hexKey(b)) && !(destinationOccupied && hexEquals(b, destination))) return null;
     return stepCostFor(state.map, mover, a, b);
   });
   if (!result || result.path.length < 2) return { rejected: 'no path to destination' };
 
+  const path = destinationOccupied ? result.path.slice(0, -1) : result.path;
+  if (path.length < 2) return { rejected: 'destination occupied' };
+
   let spent = 0;
   let reached = from;
-  for (let i = 1; i < result.path.length; i++) {
-    const step = stepCostFor(state.map, mover, result.path[i - 1]!, result.path[i]!)!;
+  for (let i = 1; i < path.length; i++) {
+    const step = stepCostFor(state.map, mover, path[i - 1]!, path[i]!)!;
     if (spent + step > mp) break;
     spent += step;
-    reached = result.path[i]!;
+    reached = path[i]!;
   }
   if (hexEquals(reached, from) && mp > 0) {
     // minimum-move rule: one hex per turn is always possible
-    reached = result.path[1]!;
+    reached = path[1]!;
     spent = mp;
   }
   return { to: reached, mpSpent: spent };

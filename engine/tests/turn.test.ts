@@ -60,6 +60,16 @@ describe('movement phase', () => {
     expect(mover.position).not.toEqual(blocker.position);
   });
 
+  test('an order onto an occupied hex still advances the unit, stopping short', () => {
+    const g = newGame();
+    const blocker = spawnDefenderAt(g, 'heavyTank', 'f1', at(20, 12));
+    const mover = spawnDefenderAt(g, 'gev', 'f2', at(25, 12));
+    resolveTurn(g, { defenders: [{ unitId: mover.id, moveTo: at(20, 12) }], kraken: {} });
+    expect(mover.position).not.toEqual(blocker.position);
+    expect(hexDistance(mover.position, blocker.position)).toBeLessThan(5); // moved closer
+    expect(g.events.some((e) => e.type === 'unitMoved' && e.unitId === mover.id)).toBe(true);
+  });
+
   test('the Kraken moves at most its current speed in MP', () => {
     const g = newGame();
     const start = g.krakenPosition;
