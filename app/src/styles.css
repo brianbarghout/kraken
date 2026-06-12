@@ -162,6 +162,7 @@ button.locked { background: #182019; box-shadow: inset 0 0 0 1px currentColor; }
   border-radius: 4px;
   background: #0a0e0cdd;
   z-index: 5;
+  pointer-events: none; /* informational — must never swallow battlefield clicks */
 }
 
 .turn-banner {
@@ -176,6 +177,7 @@ button.locked { background: #182019; box-shadow: inset 0 0 0 1px currentColor; }
   font-weight: 700;
   font-size: 15px;
   z-index: 5;
+  pointer-events: none;
 }
 .turn-banner .warn { color: var(--amber); }
 
@@ -192,6 +194,7 @@ button.locked { background: #182019; box-shadow: inset 0 0 0 1px currentColor; }
   font-size: 12px;
   z-index: 5;
   white-space: nowrap;
+  pointer-events: none; /* sits over the battlefield exactly where targets stand */
 }
 
 .phase-label {

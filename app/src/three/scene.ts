@@ -1017,6 +1017,18 @@ export class TacticalScene {
     this.lookTarget.copy(this.kraken.position);
   }
 
+  /** CSS-pixel screen position of a unit — used by the headless test harness. */
+  screenPositionOfUnit(unitId: string): { x: number; y: number } | null {
+    const mesh = this.defenderMeshes.get(unitId);
+    if (!mesh || !mesh.visible) return null;
+    const p = mesh.position.clone().project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return {
+      x: rect.left + ((p.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - p.y) / 2) * rect.height,
+    };
+  }
+
   // --------------------------------------------------------------- loop
 
   resize(width: number, height: number): void {

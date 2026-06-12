@@ -37,10 +37,10 @@ export function GameScreen({
   const [ticker, setTicker] = useState<{ text: string; tone: string }[]>([]);
   const sceneRef = useRef<TacticalScene | null>(null);
 
-  // dev/test seam: ?dev=1 exposes the controller for the headless smoke test
+  // dev/test seam: ?dev=1 exposes the controller + scene for the headless smoke test
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has('dev')) {
-      (window as unknown as Record<string, unknown>).__kraken = { controller, bump };
+      (window as unknown as Record<string, unknown>).__kraken = { controller, bump, sceneRef };
     }
   }, [controller, bump]);
 
