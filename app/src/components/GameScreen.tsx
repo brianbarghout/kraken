@@ -174,6 +174,15 @@ function describeEvents(events: GameEvent[]): { text: string; tone: string }[] {
       case 'smokeDeployed':
         lines.push({ text: 'Smoke deployed', tone: '' });
         break;
+      case 'targetEvaded':
+        lines.push({
+          text:
+            e.attackerId === 'kraken'
+              ? `${String(e.targetId)} evaded your ${String(e.weapon)} (${String(e.reason)})`
+              : `You evaded ${String(e.attackerId)} (${String(e.reason)})`,
+          tone: e.attackerId === 'kraken' ? 'bad' : 'good',
+        });
+        break;
       default:
         break;
     }

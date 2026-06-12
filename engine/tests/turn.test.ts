@@ -103,12 +103,55 @@ describe('combat phase — direct fire', () => {
     expect(hit!.result).toBe('kill');
   });
 
-  test('fire beyond weapon range is rejected', () => {
+  test('fire beyond weapon range does not resolve (target evaded event)', () => {
     const g = newGame();
     const u = spawnDefenderAt(g, 'heavyTank', 'f1', at(30, 14)); // 11 hexes away, range 4
     resolveTurn(g, { defenders: [{ unitId: u.id, fireAtSystem: 'treadLeft' }], kraken: {} });
     expect(g.kraken.systems.treadLeft).toBe('green');
-    expect(g.events.some((e) => e.type === 'orderRejected')).toBe(true);
+    expect(g.events.some((e) => e.type === 'targetEvaded' && e.attackerId === u.id)).toBe(true);
+  });
+
+  test('direct fire resolves at the post-movement position: a unit moving INTO range gets hit', () => {
+    const g = newGame(101);
+    // GEV starts 4 hexes out (beyond AP range 3) and moves to 2 hexes
+    const u = spawnDefenderAt(g, 'gev', 'f1', at(37, 14));
+    resolveTurn(g, {
+      defenders: [{ unitId: u.id, moveTo: at(39, 14) }],
+      kraken: { fires: [{ weapon: 'antiPersonnel1', targetUnitId: u.id }] },
+    });
+    // AP attack 2 vs GEV armour 1 -> kill (>= 2x), resolved where the GEV now stands
+    const hit = g.events.find(
+      (e) => e.type === 'attackResolved' && e.attackerId === 'kraken' && e.targetId === u.id,
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.result).toBe('kill');
+    expect(u.state).toBe('dead');
+  });
+
+  test('a target that moves out of range this turn evades — no hit, explicit event', () => {
+    const g = newGame(103);
+    // GEV starts 3 hexes out (inside AP range 3) and runs to 5 hexes
+    const u = spawnDefenderAt(g, 'gev', 'f1', at(38, 14));
+    resolveTurn(g, {
+      defenders: [{ unitId: u.id, moveTo: at(38, 10) }],
+      kraken: { fires: [{ weapon: 'antiPersonnel1', targetUnitId: u.id }] },
+    });
+    expect(u.state).toBe('green');
+    const evade = g.events.find((e) => e.type === 'targetEvaded' && e.attackerId === 'kraken');
+    expect(evade).toBeDefined();
+    expect(evade!.targetId).toBe(u.id);
+    expect(evade!.weapon).toBe('antiPersonnel1');
+  });
+
+  test('the Kraken itself can evade defender fire by moving out of range', () => {
+    const g = newGame(107);
+    const u = spawnDefenderAt(g, 'heavyTank', 'f1', at(37, 14)); // dist 4 = exactly tank range
+    resolveTurn(g, {
+      defenders: [{ unitId: u.id, fireAtSystem: 'treadLeft' }],
+      kraken: { moveTo: at(41, 10) }, // pulls back out of the 4-ring
+    });
+    expect(g.kraken.systems.treadLeft).toBe('green');
+    expect(g.events.some((e) => e.type === 'targetEvaded' && e.attackerId === u.id)).toBe(true);
   });
 
   test('Kraken main battery fire at a defender; light tank dies with no glance roll', () => {

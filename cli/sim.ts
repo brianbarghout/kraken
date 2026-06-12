@@ -191,6 +191,7 @@ function krakenOrders() {
 const INTERESTING = new Set([
   'krakenMoved',
   'attackResolved',
+  'targetEvaded',
   'shellFired',
   'shellLanded',
   'blastHit',
@@ -235,6 +236,10 @@ function describeEvent(e: Record<string, unknown>): string | null {
       return `  ${e.unitId} (${e.unitType}) DESTROYED`;
     case 'smokeDeployed':
       return `KRAKEN pops smoke at ${fmt(e.center as Axial)}`;
+    case 'targetEvaded':
+      return e.attackerId === 'kraken'
+        ? `  ${e.targetId} EVADES KRAKEN ${e.weapon} (${e.reason})`
+        : `  KRAKEN evades ${e.attackerId} (${e.reason})`;
     case 'repairStarted':
       return `KRAKEN printers start repairing ${e.system} (${e.turnsRequired} turns)`;
     case 'repairCompleted':

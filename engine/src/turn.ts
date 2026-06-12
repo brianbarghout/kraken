@@ -206,11 +206,23 @@ function defenderDirectFire(state: GameState, order: DefenderOrder, unit: Defend
   }
   const system = order.fireAtSystem!;
   const dist = hexDistance(unit.position, state.krakenPosition);
+  // direct fire re-validates against the post-movement position — a target
+  // out of envelope at resolution has evaded (DECISIONS.md D36)
   if (dist > stats.range) {
-    return reject(state, phase, 'target out of range', { unitId: unit.id });
+    emit(state, phase, 'targetEvaded', {
+      attackerId: unit.id,
+      target: 'kraken',
+      reason: 'out of range',
+    });
+    return;
   }
   if (!hasLineOfSight(state.map, unit.position, state.krakenPosition)) {
-    return reject(state, phase, 'no line of sight', { unitId: unit.id });
+    emit(state, phase, 'targetEvaded', {
+      attackerId: unit.id,
+      target: 'kraken',
+      reason: 'no line of sight',
+    });
+    return;
   }
   if (!targetableSystems(state.kraken).includes(system)) {
     return reject(state, phase, 'system not targetable', { unitId: unit.id, system });
@@ -347,7 +359,18 @@ function krakenFire(state: GameState, orders: KrakenOrder): void {
     if (fire.targetUnitId) {
       const err = krakenFireCheckUnit(state, fire.weapon, fire.targetUnitId);
       if (err) {
-        reject(state, phase, err, { weapon: fire.weapon });
+        // range/sensor/LOS failures at resolution mean the target evaded
+        // (positions are post-movement, re-validated — D36)
+        if (err === 'target out of range' || err === 'target outside sensor range' || err === 'no line of sight') {
+          emit(state, phase, 'targetEvaded', {
+            attackerId: 'kraken',
+            weapon: fire.weapon,
+            targetId: fire.targetUnitId,
+            reason: err,
+          });
+        } else {
+          reject(state, phase, err, { weapon: fire.weapon });
+        }
         continue;
       }
       const target = defenderById(state, fire.targetUnitId)!;

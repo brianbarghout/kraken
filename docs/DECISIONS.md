@@ -170,3 +170,11 @@ retuning never requires code changes.
   is silent; sitting uselessly forever felt wrong even for Tier 1.
   Tier 1 GEVs do not shoot-and-scoot (that is terrain/tactic
   exploitation, which §18.1 excludes).
+- **D36 — Direct fire is unit-tracking with re-validation (verified +
+  hardened 2026-06-12).** Combat resolves after movement; MAIN/SEC/AP
+  fire orders re-check range, sensors and LOS against the target's
+  post-movement position. A target out of envelope at resolution
+  **evades**: the engine emits a `targetEvaded` event (surfaced in the
+  UI ticker and CLI sim) instead of a silent generic rejection. Only
+  missiles and artillery are hex-targeted — their shells landing on
+  vacated ground is the designed 1-turn-delay suspense, not a bug.
