@@ -14,3 +14,5 @@ export * from './game';
 export * from './turn';
 export * from './visibility';
 export * from './targeting';
+export * from './ai';
+export * from './solo';

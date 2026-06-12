@@ -1,0 +1,61 @@
+{
+  "$comment": "KRAKEN map01-small — 50% reduced Gateway for faster solo sessions (GDD §18.1). Same feature set compressed: mountain choke with a gate, ridge line, north forest corridor, river with one road bridge, swamp pocket, rubble near the CP.",
+  "id": "map01-small",
+  "name": "Gateway Compact",
+  "legend": {
+    ".": "open",
+    "r": "road",
+    "f": "forest",
+    "h": "hills",
+    "m": "mountain",
+    "w": "river",
+    "s": "swamp",
+    "b": "rubble"
+  },
+  "terrain": {
+    "open": { "move": 1, "losKind": "clear", "cover": "none", "elevation": 0 },
+    "road": { "move": 0.75, "losKind": "clear", "cover": "none", "elevation": 0 },
+    "forest": { "move": 3, "losKind": "blocks", "cover": "good", "elevation": 0 },
+    "hills": { "move": 2, "losKind": "extendsFromTop", "cover": "partial", "elevation": 1 },
+    "mountain": { "move": 4, "krakenImpassable": true, "losKind": "fullyBlocks", "cover": "full", "elevation": 2 },
+    "river": { "move": 2.5, "losKind": "clear", "cover": "none", "elevation": 0 },
+    "swamp": { "move": 4, "losKind": "clear", "cover": "none", "elevation": 0 },
+    "rubble": { "move": 2, "losKind": "partial", "cover": "partial", "elevation": 0 }
+  },
+  "rows": [
+    "........mm.......w....",
+    "........mmffffff.w....",
+    "........mmffffff.w....",
+    "........mmfffhff.w....",
+    "........mm...h...w....",
+    "........mm...h...w....",
+    ".............h...w....",
+    "...b.............w....",
+    "...rrrrrrrrrrrrrrrrrrr",
+    "...b.............w....",
+    ".............h...w....",
+    "........mm...h...w....",
+    "........mm...hss.w....",
+    "........mm....ss.w....",
+    "........mm.......w....",
+    "........mm.......w...."
+  ],
+  "commandPost": { "col": 2, "row": 8 },
+  "krakenSpawn": { "col": 20, "row": 7 },
+  "defenderSpawns": [
+    { "col": 0, "row": 2 },
+    { "col": 0, "row": 5 },
+    { "col": 0, "row": 8 },
+    { "col": 0, "row": 11 },
+    { "col": 0, "row": 14 },
+    { "col": 4, "row": 0 },
+    { "col": 4, "row": 15 },
+    { "col": 1, "row": 11 },
+    { "col": 1, "row": 5 },
+    { "col": 5, "row": 1 },
+    { "col": 5, "row": 14 },
+    { "col": 2, "row": 2 },
+    { "col": 2, "row": 13 },
+    { "col": 6, "row": 0 }
+  ]
+}
