@@ -60,9 +60,12 @@ retuning never requires code changes.
   defenders fastest-first (unit id as tiebreak). Deterministic by
   construction for replay.
 - **D13 — Command Post hex.** Impassable to everyone; the Kraken destroys
-  it by fire, not by driving over it. CP armour 3 (one main-battery hit
-  ≥ 2× armour = kill), states green → amber → destroyed. **[addition —
-  armour value]**
+  it by fire, not by driving over it. CP armour 3, but as a hardened
+  structure it is **immune to kill results** (`immuneToKill` in
+  units.json): every successful hit steps it one rung down
+  green → amber → red → destroyed, so it takes ~3 main-battery hits or
+  sustained secondary fire. **[addition — armour value & kill immunity;
+  amended by Brian 2026-06-12]**
 
 ## Line of sight (§6.2)
 

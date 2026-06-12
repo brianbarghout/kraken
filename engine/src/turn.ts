@@ -136,9 +136,20 @@ function damageDefender(
   }
 }
 
+const CP_LADDER = ['green', 'amber', 'red', 'destroyed'] as const;
+
+/**
+ * The CP is a hardened structure: immune to outright kill results — every
+ * successful hit steps it one rung down green -> amber -> red -> destroyed
+ * (DECISIONS.md D13). ~3 main-battery hits or sustained secondary fire.
+ */
 function damageCommandPost(state: GameState, phase: TurnPhase, result: 'damage' | 'kill'): void {
   const cp = state.commandPost;
-  cp.state = result === 'kill' || cp.state === 'amber' ? 'destroyed' : 'amber';
+  if (state.data.commandPost.immuneToKill) {
+    cp.state = CP_LADDER[Math.min(CP_LADDER.indexOf(cp.state) + 1, 3)]!;
+  } else {
+    cp.state = result === 'kill' || cp.state !== 'green' ? 'destroyed' : 'amber';
+  }
   emit(state, phase, 'commandPostStateChanged', { state: cp.state });
 }
 

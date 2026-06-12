@@ -110,7 +110,8 @@ describe('units.json — combat and game constants', () => {
     expect(data.game.turnLimit).toBe(85);
   });
 
-  test('command post exists with armour', () => {
-    expect(data.commandPost.armour).toBeGreaterThan(0);
+  test('command post: armour 3, immune to kill results (D13 amendment)', () => {
+    expect(data.commandPost.armour).toBe(3);
+    expect(data.commandPost.immuneToKill).toBe(true);
   });
 });

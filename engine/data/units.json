@@ -17,7 +17,8 @@
     "splashAttackMultiplier": 0.5
   },
   "commandPost": {
-    "armour": 3
+    "armour": 3,
+    "immuneToKill": true
   },
   "defenders": {
     "heavyTank": {

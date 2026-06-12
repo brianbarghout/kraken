@@ -61,7 +61,7 @@ export interface UnitData {
     splashRadius: number;
     splashAttackMultiplier: number;
   };
-  commandPost: { armour: number };
+  commandPost: { armour: number; immuneToKill: boolean };
   defenders: Record<DefenderType, DefenderStats>;
   kraken: {
     speed: number;

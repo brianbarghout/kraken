@@ -32,7 +32,7 @@ export interface SmokeCloud {
   expiresTurn: number;
 }
 
-export type CommandPostState = 'green' | 'amber' | 'destroyed';
+export type CommandPostState = 'green' | 'amber' | 'red' | 'destroyed';
 
 export interface Outcome {
   winner: 'defenders' | 'kraken' | 'draw';

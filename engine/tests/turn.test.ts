@@ -268,13 +268,22 @@ describe('repair flow in the turn cycle (GDD §5.4)', () => {
 });
 
 describe('win conditions (GDD §3)', () => {
-  test('Kraken wins when the Command Post is destroyed', () => {
+  test('the CP is immune to kill results: each successful hit steps green -> amber -> red -> destroyed', () => {
     const g = newGame(59);
     g.krakenPosition = at(9, 14); // within main battery range 8 of the CP with LOS
-    resolveTurn(g, {
+    const fire = {
       defenders: [],
-      kraken: { fires: [{ weapon: 'mainBattery', targetCommandPost: true }] },
-    });
+      kraken: { fires: [{ weapon: 'mainBattery' as const, targetCommandPost: true }] },
+    };
+    // main battery 6 vs armour 3 is the kill bracket — every hit lands, but only one step each
+    resolveTurn(g, fire);
+    expect(g.commandPost.state).toBe('amber');
+    expect(g.outcome).toBeNull();
+    resolveTurn(g, fire);
+    expect(g.commandPost.state).toBe('red');
+    expect(g.outcome).toBeNull();
+    resolveTurn(g, fire);
+    expect(g.commandPost.state).toBe('destroyed');
     expect(g.outcome).toEqual({ winner: 'kraken', reason: 'commandPostDestroyed' });
   });
 
